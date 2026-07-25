@@ -38,6 +38,8 @@ export const channelSchema = z.object({
   id: z.number(),
   type: z.number(),
   key: z.string(),
+  agent_plan_access_key: z.string().optional(),
+  agent_plan_secret_key: z.string().optional(),
   openai_organization: z.string().nullish(),
   test_model: z.string().nullish(),
   status: z.number(), // 1: enabled, 0: manual disabled, 2: auto disabled
@@ -106,6 +108,7 @@ export interface ChannelOtherSettings {
   upstream_model_update_ignored_models?: string[]
   upstream_model_update_last_check_time?: number
   upstream_model_update_last_detected_models?: string[]
+  agent_plan_usage_enabled?: boolean
   advanced_custom?: AdvancedCustomConfig
 }
 

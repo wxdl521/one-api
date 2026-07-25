@@ -24,6 +24,8 @@ type Channel struct {
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
 	Key                string  `json:"key" gorm:"not null"`
+	AgentPlanAccessKey string  `json:"agent_plan_access_key" gorm:"column:agent_plan_access_key"`
+	AgentPlanSecretKey string  `json:"agent_plan_secret_key" gorm:"column:agent_plan_secret_key"`
 	OpenAIOrganization *string `json:"openai_organization"`
 	TestModel          *string `json:"test_model"`
 	Status             int     `json:"status" gorm:"default:1"`
@@ -360,7 +362,7 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOpti
 	if selectAll {
 		err = order.Apply(DB).Find(&channels).Error
 	} else {
-		err = order.Apply(DB).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+		err = order.Apply(DB).Limit(num).Offset(startIdx).Omit("key", "agent_plan_access_key", "agent_plan_secret_key").Find(&channels).Error
 	}
 	return channels, err
 }
@@ -370,7 +372,7 @@ func GetChannelsByTag(tag string, idSort bool, selectAll bool, sortOptions ...Ch
 	order := resolveChannelSortOptions(idSort, sortOptions)
 	query := order.Apply(DB.Where("tag = ?", tag))
 	if !selectAll {
-		query = query.Omit("key")
+		query = query.Omit("key", "agent_plan_access_key", "agent_plan_secret_key")
 	}
 	err := query.Find(&channels).Error
 	return channels, err
@@ -394,7 +396,7 @@ func SearchChannels(keyword string, group string, model string, idSort bool, sor
 	order := resolveChannelSortOptions(idSort, sortOptions)
 
 	// 构造基础查询
-	baseQuery := DB.Model(&Channel{}).Omit("key")
+	baseQuery := DB.Model(&Channel{}).Omit("key", "agent_plan_access_key", "agent_plan_secret_key")
 
 	// 构造WHERE子句
 	whereClause := "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
@@ -415,9 +417,20 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	if selectAll {
 		err = DB.First(channel, "id = ?", id).Error
 	} else {
-		err = DB.Omit("key").First(channel, "id = ?", id).Error
+		err = DB.Omit("key", "agent_plan_access_key", "agent_plan_secret_key").First(channel, "id = ?", id).Error
 	}
 	if err != nil {
+		return nil, err
+	}
+	return channel, nil
+}
+
+func GetChannelByIdForUpdate(tx *gorm.DB, id int) (*Channel, error) {
+	if tx == nil || id <= 0 {
+		return nil, errors.New("invalid channel lock arguments")
+	}
+	channel := &Channel{}
+	if err := lockForUpdate(tx).First(channel, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return channel, nil
@@ -959,6 +972,14 @@ func (channel *Channel) ValidateSettings() error {
 		err := common.UnmarshalJsonStr(channel.OtherSettings, channelOtherSettings)
 		if err != nil {
 			return err
+		}
+	}
+	if channelOtherSettings.AgentPlanUsageEnabled {
+		if channel.Type != constant.ChannelTypeVolcEngine && channel.Type != constant.ChannelTypeAdvancedCustom {
+			return fmt.Errorf("agent plan usage is only supported for VolcEngine or Advanced Custom channels")
+		}
+		if channel.ChannelInfo.IsMultiKey {
+			return fmt.Errorf("agent plan usage is only supported for single-key channels")
 		}
 	}
 	if channel.Type == constant.ChannelTypeAdvancedCustom {

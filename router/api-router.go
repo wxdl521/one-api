@@ -174,6 +174,12 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
 			subscriptionAdminRoute.POST("/plans/:id/subscriptions/reset", controller.AdminResetPlanSubscriptions)
+			subscriptionAdminRoute.GET("/agent-plan-pools", controller.AdminListAgentPlanQuotaPools)
+			subscriptionAdminRoute.POST("/agent-plan-pools", controller.AdminCreateAgentPlanQuotaPool)
+			subscriptionAdminRoute.PUT("/agent-plan-pools/:id", controller.AdminUpdateAgentPlanQuotaPool)
+			subscriptionAdminRoute.DELETE("/agent-plan-pools/:id", controller.AdminDeleteAgentPlanQuotaPool)
+			subscriptionAdminRoute.POST("/agent-plan-pools/:id/sync", controller.AdminSyncAgentPlanQuotaPool)
+			subscriptionAdminRoute.GET("/agent-plan-pools/eligible-source-channels", controller.AdminListAgentPlanQuotaPoolEligibleSourceChannels)
 
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)

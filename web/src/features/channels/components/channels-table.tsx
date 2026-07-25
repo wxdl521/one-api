@@ -31,9 +31,11 @@ import { useTranslation } from 'react-i18next'
 import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
+  DATA_TABLE_VIEW_MODES,
   DataTablePage,
   useDebouncedColumnFilter,
   useDataTable,
+  useDataTableViewMode,
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,7 +48,7 @@ import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
-import { getChannels, searchChannels, getGroups } from '../api'
+import { getAgentPlanUsage, getChannels, searchChannels, getGroups } from '../api'
 import {
   DEFAULT_PAGE_SIZE,
   CHANNEL_STATUS,
@@ -58,6 +60,8 @@ import {
   isTagAggregateRow,
   getChannelTypeIcon,
   getChannelTypeLabel,
+  isAgentPlanUsageEnabled,
+  loadAgentPlanUsageSafely,
 } from '../lib'
 import type { Channel, ChannelSortBy } from '../types'
 import { ChannelCard } from './channel-card'
@@ -96,6 +100,10 @@ export function ChannelsTable() {
     setSensitiveVisible,
   } = useChannels()
   const isMobile = useMediaQuery('(max-width: 640px)')
+  const [viewMode, setViewMode] = useDataTableViewMode({
+    storageKey: CHANNELS_VIEW_MODE_STORAGE_KEY,
+    defaultMode: DATA_TABLE_VIEW_MODES.CARD,
+  })
 
   // Table state
   const [sorting, setSorting] = useState<SortingState>([])
@@ -303,6 +311,24 @@ export function ChannelsTable() {
   const totalCount = data?.data?.total || 0
   const typeCounts = data?.data?.type_counts
 
+  const agentPlanChannelIDs = useMemo(
+    () =>
+      (data?.data?.items || [])
+        .filter(isAgentPlanUsageEnabled)
+        .map((channel) => channel.id),
+    [data?.data?.items]
+  )
+  const agentPlanUsageQuery = useQuery({
+    queryKey: ['agent-plan-usage', agentPlanChannelIDs],
+    queryFn: () =>
+      loadAgentPlanUsageSafely(() => getAgentPlanUsage(agentPlanChannelIDs)),
+    enabled:
+      viewMode === DATA_TABLE_VIEW_MODES.CARD && agentPlanChannelIDs.length > 0,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const agentPlanUsage = agentPlanUsageQuery.data?.data || {}
+
   // Columns configuration
   const columns = useChannelsColumns({ enableSelection: batchMode })
 
@@ -417,9 +443,15 @@ export function ChannelsTable() {
       )}
       skeletonKeyPrefix='channel-skeleton'
       enableCardView
-      viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
       renderCard={(row, { isSelected }) => (
-        <ChannelCard row={row} isSelected={isSelected} />
+        <ChannelCard
+          row={row}
+          isSelected={isSelected}
+          agentPlanUsage={agentPlanUsage}
+          agentPlanUsageLoading={agentPlanUsageQuery.isLoading}
+        />
       )}
       cardGridClassName='grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3'
       applyHeaderSize

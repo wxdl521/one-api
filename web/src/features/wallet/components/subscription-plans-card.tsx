@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { TitledCard } from '@/components/ui/titled-card'
 import {
   Tooltip,
@@ -109,6 +110,8 @@ export function SubscriptionPlansCard({
   >([])
   const [billingPreference, setBillingPreference] =
     useState('subscription_first')
+  const [agentPlanWalletFallbackEnabled, setAgentPlanWalletFallbackEnabled] =
+    useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -141,6 +144,9 @@ export function SubscriptionPlansCard({
       if (res.success && res.data) {
         setBillingPreference(
           res.data.billing_preference || 'subscription_first'
+        )
+        setAgentPlanWalletFallbackEnabled(
+          !!res.data.agent_plan_wallet_fallback_enabled
         )
         setActiveSubscriptions(res.data.subscriptions || [])
         setAllSubscriptions(res.data.all_subscriptions || [])
@@ -187,8 +193,26 @@ export function SubscriptionPlansCard({
     }
   }
 
+  const handleAgentPlanWalletFallbackChange = async (enabled: boolean) => {
+    const previous = agentPlanWalletFallbackEnabled
+    setAgentPlanWalletFallbackEnabled(enabled)
+    try {
+      const res = await updateBillingPreference(billingPreference, enabled)
+      if (!res.success) {
+        toast.error(res.message || t('Update failed'))
+        setAgentPlanWalletFallbackEnabled(previous)
+      }
+    } catch {
+      toast.error(t('Request failed'))
+      setAgentPlanWalletFallbackEnabled(previous)
+    }
+  }
+
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
+  const canUseAgentPlanWalletFallback = activeSubscriptions.some(
+    (item) => item.agent_plan_package?.allow_wallet_fallback
+  )
   const isAvailable = loading || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
@@ -393,6 +417,16 @@ export function SubscriptionPlansCard({
             </p>
           )}
 
+          {canUseAgentPlanWalletFallback ? (
+            <div className='mt-3 flex items-center justify-between gap-3 rounded-md border p-3 text-xs'>
+              <div>
+                <div className='font-medium'>{t('Agent Plan wallet fallback')}</div>
+                <p className='text-muted-foreground mt-1'>{t('Use wallet quota when an Agent Plan package is exhausted.')}</p>
+              </div>
+              <Switch checked={agentPlanWalletFallbackEnabled} onCheckedChange={handleAgentPlanWalletFallbackChange} />
+            </div>
+          ) : null}
+
           {hasAny && (
             <>
               <Separator className='my-3' />
@@ -413,6 +447,7 @@ export function SubscriptionPlansCard({
                   const isActive =
                     subscription?.status === 'active' && !isExpired
                   const nextResetTime = subscription?.next_reset_time ?? 0
+                  const agentPlanPackage = sub.agent_plan_package
                   let statusBadge = (
                     <StatusBadge
                       label={t('Expired')}
@@ -504,6 +539,13 @@ export function SubscriptionPlansCard({
                           </span>
                         )}
                       </div>
+                      {agentPlanPackage ? (
+                        <div className='text-muted-foreground mt-2 rounded bg-muted/50 p-2'>
+                          <div className='font-medium text-foreground'>{t('Agent Plan package')}</div>
+                          <div>{t('Applicable channel group')}: {agentPlanPackage.scope_group}</div>
+                          <div>{t('Applicable models')}: {agentPlanPackage.scope_models.join(', ')}</div>
+                        </div>
+                      ) : null}
                       {totalAmount > 0 && isActive && (
                         <Progress value={usagePercent} className='mt-2 h-1.5' />
                       )}

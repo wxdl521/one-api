@@ -137,7 +137,7 @@ func GetAllChannels(c *gin.Context) {
 			}
 			var tagChannels []*model.Channel
 			err := sortOptions.Apply(buildChannelListQuery(groupFilter, statusFilter, typeFilter).Where("tag = ?", *tag)).
-				Omit("key").
+				Omit("key", "agent_plan_access_key", "agent_plan_secret_key").
 				Find(&tagChannels).Error
 			if err != nil {
 				common.SysError("failed to get channels by tag: " + err.Error())
@@ -156,7 +156,7 @@ func GetAllChannels(c *gin.Context) {
 		err := sortOptions.Apply(buildChannelListQuery(groupFilter, statusFilter, typeFilter)).
 			Limit(pageInfo.GetPageSize()).
 			Offset(pageInfo.GetStartIdx()).
-			Omit("key").
+			Omit("key", "agent_plan_access_key", "agent_plan_secret_key").
 			Find(&channelData).Error
 		if err != nil {
 			common.SysError("failed to get channels: " + err.Error())
@@ -295,7 +295,7 @@ func SearchChannels(c *gin.Context) {
 			if tag != nil && *tag != "" {
 				var tagChannels []*model.Channel
 				err := sortOptions.Apply(buildChannelListQuery(group, -1, -1).Where("tag = ?", *tag)).
-					Omit("key").
+					Omit("key", "agent_plan_access_key", "agent_plan_secret_key").
 					Find(&tagChannels).Error
 				if err != nil {
 					c.JSON(http.StatusOK, gin.H{
@@ -1111,6 +1111,8 @@ func UpdateChannel(c *gin.Context) {
 		"changed_fields": changedFields,
 	})
 	channel.Key = ""
+	channel.AgentPlanAccessKey = ""
+	channel.AgentPlanSecretKey = ""
 	clearChannelInfo(&channel.Channel)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

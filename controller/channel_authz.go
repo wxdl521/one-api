@@ -9,6 +9,12 @@ func channelHasSensitiveChanges(channel *PatchChannel, origin *model.Channel, re
 	if _, ok := requestData["key"]; ok && channel.Key != "" && channel.Key != origin.Key {
 		return true
 	}
+	if _, ok := requestData["agent_plan_access_key"]; ok && channel.AgentPlanAccessKey != "" && channel.AgentPlanAccessKey != origin.AgentPlanAccessKey {
+		return true
+	}
+	if _, ok := requestData["agent_plan_secret_key"]; ok && channel.AgentPlanSecretKey != "" && channel.AgentPlanSecretKey != origin.AgentPlanSecretKey {
+		return true
+	}
 	if _, ok := requestData["base_url"]; ok && !equalStringPtr(channel.BaseURL, origin.BaseURL) {
 		return true
 	}
@@ -61,16 +67,18 @@ func channelHasSensitiveChanges(channel *PatchChannel, origin *model.Channel, re
 // channelHasSensitiveChanges with a precise old-vs-new comparison; this set is
 // used to exclude them from the fail-closed scan for unknown fields.
 var channelSensitiveFields = map[string]struct{}{
-	"type":                {},
-	"key":                 {},
-	"base_url":            {},
-	"openai_organization": {},
-	"header_override":     {},
-	"param_override":      {},
-	"setting":             {},
-	"other":               {},
-	"settings":            {},
-	"key_mode":            {},
+	"type":                  {},
+	"key":                   {},
+	"agent_plan_access_key": {},
+	"agent_plan_secret_key": {},
+	"base_url":              {},
+	"openai_organization":   {},
+	"header_override":       {},
+	"param_override":        {},
+	"setting":               {},
+	"other":                 {},
+	"settings":              {},
+	"key_mode":              {},
 }
 
 // channelOperationalFields lists fields managed by operation endpoints instead

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
+import { CalendarClock, CreditCard, RefreshCw, Settings2, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -69,6 +69,7 @@ import {
   getGroups,
   createWaffoPancakeSubscriptionProduct,
   listWaffoPancakeSubscriptionProductOptions,
+  getAgentPlanQuotaPools,
 } from '../api'
 import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
 import {
@@ -76,9 +77,11 @@ import {
   PLAN_FORM_DEFAULTS,
   planToFormValues,
   formValuesToPlanPayload,
+  withAgentPlanPackage,
   type PlanFormValues,
 } from '../lib'
-import type { PlanRecord } from '../types'
+import type { AgentPlanPackagePlan, PlanRecord } from '../types'
+import type { AgentPlanQuotaPool } from '@/features/agent-plan-quota-pools/types'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface Props {
@@ -104,6 +107,13 @@ export function SubscriptionsMutateDrawer({
   const [pancakeProducts, setPancakeProducts] = useState<
     { id: string; name: string; status: string }[]
   >([])
+  const [quotaPools, setQuotaPools] = useState<AgentPlanQuotaPool[]>([])
+  const [agentPlanEnabled, setAgentPlanEnabled] = useState(false)
+  const [agentPlanPoolId, setAgentPlanPoolId] = useState('')
+  const [agentPlanAFP, setAgentPlanAFP] = useState('')
+  const [agentPlanGroup, setAgentPlanGroup] = useState('')
+  const [agentPlanModels, setAgentPlanModels] = useState('')
+  const [agentPlanWalletFallback, setAgentPlanWalletFallback] = useState(false)
 
   const schema = getPlanFormSchema(t)
   const form = useForm<PlanFormValues>({
@@ -115,8 +125,21 @@ export function SubscriptionsMutateDrawer({
     if (open) {
       if (currentRow?.plan) {
         form.reset(planToFormValues(currentRow.plan))
+        const packagePlan = currentRow.agent_plan_package
+        setAgentPlanEnabled(!!packagePlan)
+        setAgentPlanPoolId(packagePlan ? String(packagePlan.pool_id) : '')
+        setAgentPlanAFP(packagePlan ? String(packagePlan.allocation_afp) : '')
+        setAgentPlanGroup(packagePlan?.scope_group || '')
+        setAgentPlanModels(packagePlan?.scope_models.join(', ') || '')
+        setAgentPlanWalletFallback(!!packagePlan?.allow_wallet_fallback)
       } else {
         form.reset(PLAN_FORM_DEFAULTS)
+        setAgentPlanEnabled(false)
+        setAgentPlanPoolId('')
+        setAgentPlanAFP('')
+        setAgentPlanGroup('')
+        setAgentPlanModels('')
+        setAgentPlanWalletFallback(false)
       }
       getGroups()
         .then((res) => {
@@ -140,6 +163,9 @@ export function SubscriptionsMutateDrawer({
           }
         })
         .catch(() => setPancakeProducts([]))
+      getAgentPlanQuotaPools()
+        .then((res) => setQuotaPools(res.success ? res.data || [] : []))
+        .catch(() => setQuotaPools([]))
     }
   }, [open, currentRow, form])
 
@@ -156,7 +182,40 @@ export function SubscriptionsMutateDrawer({
   const onSubmit = async (values: PlanFormValues) => {
     setIsSubmitting(true)
     try {
-      const payload = formValuesToPlanPayload(values)
+      let packageConfig: AgentPlanPackagePlan | null = null
+      if (agentPlanEnabled) {
+        const models = agentPlanModels
+          .split(',')
+          .map((model) => model.trim())
+          .filter(Boolean)
+        const allocation = Number(agentPlanAFP)
+        if (!agentPlanPoolId || allocation <= 0 || !agentPlanGroup || !models.length) {
+          toast.error(t('Complete all Agent Plan package fields'))
+          return
+        }
+        packageConfig = {
+          pool_id: Number(agentPlanPoolId),
+          allocation_afp: allocation,
+          scope_group: agentPlanGroup,
+          scope_models: models,
+          allow_wallet_fallback: agentPlanWalletFallback,
+        }
+        const selectedPool = quotaPools.find(
+          (pool) => pool.id === Number(agentPlanPoolId)
+        )
+        if (!selectedPool) {
+          toast.error(t('Select a quota pool'))
+          return
+        }
+        values.total_amount = allocation * selectedPool.display_multiplier
+        values.quota_reset_period = 'never'
+        values.allow_balance_pay = false
+        values.allow_wallet_overflow = false
+      }
+      const payload = withAgentPlanPackage(
+        formValuesToPlanPayload(values),
+        packageConfig
+      )
       if (isEdit && currentRow?.plan?.id) {
         const res = await updatePlan(currentRow.plan.id, payload)
         if (res.success) {
@@ -579,6 +638,67 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               </div>
+            </SideDrawerSection>
+
+            <SideDrawerSection>
+              <h3 className='flex items-center gap-2 text-sm font-medium'>
+                <IconBadge tone='warning' size='xs'>
+                  <Sparkles />
+                </IconBadge>
+                {t('Agent Plan package')}
+              </h3>
+              <div className={sideDrawerSwitchItemClassName()}>
+                <div>
+                  <FormLabel>{t('Issue from an Agent Plan quota pool')}</FormLabel>
+                  <FormDescription>
+                    {t('Agent Plan packages are assigned by administrators and never sold publicly.')}
+                  </FormDescription>
+                </div>
+                <Switch checked={agentPlanEnabled} onCheckedChange={setAgentPlanEnabled} />
+              </div>
+              {agentPlanEnabled ? (
+                <div className='space-y-3'>
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                    <FormItem>
+                      <FormLabel>{t('Quota pool')}</FormLabel>
+                      <Select value={agentPlanPoolId} onValueChange={(value) => setAgentPlanPoolId(value || '')}>
+                        <SelectTrigger><SelectValue placeholder={t('Select a quota pool')} /></SelectTrigger>
+                        <SelectContent>
+                          {quotaPools.map((pool) => (
+                            <SelectItem key={pool.id} value={String(pool.id)}>
+                              {pool.name} ({pool.display_multiplier}x)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                    <FormItem>
+                      <FormLabel>{t('AFP per user')}</FormLabel>
+                      <Input type='number' min='0.000001' step='0.000001' value={agentPlanAFP} onChange={(event) => setAgentPlanAFP(event.target.value)} />
+                    </FormItem>
+                  </div>
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                    <FormItem>
+                      <FormLabel>{t('Applicable channel group')}</FormLabel>
+                      <Select value={agentPlanGroup} onValueChange={(value) => setAgentPlanGroup(value || '')}>
+                        <SelectTrigger><SelectValue placeholder={t('Select a group')} /></SelectTrigger>
+                        <SelectContent>{groupOptions.map((group) => <SelectItem key={group} value={group}>{group}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </FormItem>
+                    <FormItem>
+                      <FormLabel>{t('Applicable models')}</FormLabel>
+                      <Input value={agentPlanModels} onChange={(event) => setAgentPlanModels(event.target.value)} placeholder={t('Comma-separated model names')} />
+                    </FormItem>
+                  </div>
+                  <div className={sideDrawerSwitchItemClassName()}>
+                    <div>
+                      <FormLabel>{t('Allow wallet fallback')}</FormLabel>
+                      <FormDescription>{t('Users may enable wallet fallback after this package is exhausted.')}</FormDescription>
+                    </div>
+                    <Switch checked={agentPlanWalletFallback} onCheckedChange={setAgentPlanWalletFallback} />
+                  </div>
+                </div>
+              ) : null}
             </SideDrawerSection>
 
             {/* Duration Settings */}

@@ -261,6 +261,9 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
+	if err := ensureAgentPlanQuotaPoolSourceChannelUnique(); err != nil {
+		return err
+	}
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -294,6 +297,9 @@ func migrateDB() error {
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionPreConsumeRecord{},
+		&AgentPlanQuotaPool{},
+		&AgentPlanPackagePlan{},
+		&AgentPlanPackageAllocation{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
@@ -325,6 +331,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := ensureAgentPlanQuotaPoolSourceChannelUnique(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -357,6 +366,9 @@ func migrateDBFast() error {
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
+		{&AgentPlanQuotaPool{}, "AgentPlanQuotaPool"},
+		{&AgentPlanPackagePlan{}, "AgentPlanPackagePlan"},
+		{&AgentPlanPackageAllocation{}, "AgentPlanPackageAllocation"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
@@ -403,6 +415,33 @@ func migrateDBFast() error {
 		}
 	}
 	common.SysLog("database migrated")
+	return nil
+}
+
+// ensureAgentPlanQuotaPoolSourceChannelUnique refuses an ambiguous legacy
+// inventory before AutoMigrate adds the unique source-channel index. It does
+// not delete or merge quota pools because either choice could hide an existing
+// official AFP oversell; an administrator must resolve duplicate sources first.
+func ensureAgentPlanQuotaPoolSourceChannelUnique() error {
+	if !DB.Migrator().HasTable(&AgentPlanQuotaPool{}) {
+		return nil
+	}
+	var duplicate struct {
+		SourceChannelId int
+		Count           int64
+	}
+	result := DB.Model(&AgentPlanQuotaPool{}).
+		Select("source_channel_id, COUNT(*) AS count").
+		Group("source_channel_id").
+		Having("COUNT(*) > ?", 1).
+		Limit(1).
+		Scan(&duplicate)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		return fmt.Errorf("cannot add Agent Plan quota pool source uniqueness: source channel %d is bound to %d pools; resolve duplicate pools before restarting", duplicate.SourceChannelId, duplicate.Count)
+	}
 	return nil
 }
 

@@ -36,6 +36,9 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if rejectAgentPlanPackagePublic(c, plan.Id) {
+		return
+	}
 	if !plan.Enabled {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return

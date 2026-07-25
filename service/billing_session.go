@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -215,7 +216,8 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
+		if errors.Is(err, model.ErrAgentPlanPackageQuotaInsufficient) ||
+			strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
 			return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
@@ -384,10 +386,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.OriginModelName,
-				amount:    subConsume,
+				requestId:  relayInfo.RequestId,
+				userId:     relayInfo.UserId,
+				modelName:  relayInfo.OriginModelName,
+				usingGroup: relayInfo.UsingGroup,
+				amount:     subConsume,
 			},
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
@@ -396,6 +399,23 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			return nil, apiErr
 		}
 		return session, nil
+	}
+
+	packageMatch, packageErr := model.FindMatchingAgentPlanPackage(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.OriginModelName)
+	if packageErr != nil {
+		return nil, types.NewError(packageErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	}
+	if packageMatch != nil {
+		session, apiErr := trySubscription()
+		if apiErr == nil {
+			return session, nil
+		}
+		if apiErr.GetErrorCode() != types.ErrorCodeInsufficientUserQuota ||
+			!packageMatch.Allocation.AllowWalletFallback ||
+			!relayInfo.UserSetting.AgentPlanWalletFallbackEnabled {
+			return nil, apiErr
+		}
+		return tryWallet()
 	}
 
 	switch pref {

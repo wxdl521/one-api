@@ -212,6 +212,8 @@ export const channelFormSchema = z
       .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
     advanced_custom: z.string().optional(),
     other: z.string().optional(),
+    agent_plan_access_key: z.string().optional(),
+    agent_plan_secret_key: z.string().optional(),
     // Multi-key options (not sent to backend directly)
     multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
     multi_key_type: z.enum(['random', 'polling']).optional(),
@@ -245,6 +247,7 @@ export const channelFormSchema = z
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
+    agent_plan_usage_enabled: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
@@ -394,7 +397,10 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
+  agent_plan_usage_enabled: false,
   advanced_custom: '',
+  agent_plan_access_key: '',
+  agent_plan_secret_key: '',
 }
 
 // ============================================================================
@@ -450,6 +456,7 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
+  let agentPlanUsageEnabled = false
   let advancedCustom = ''
 
   if (channel.settings) {
@@ -476,6 +483,7 @@ export function transformChannelToFormDefaults(
       )
         ? parsed.upstream_model_update_ignored_models.join(',')
         : ''
+      agentPlanUsageEnabled = parsed.agent_plan_usage_enabled === true
       if (parsed.advanced_custom) {
         advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
       }
@@ -507,6 +515,8 @@ export function transformChannelToFormDefaults(
     header_override: channel.header_override || '',
     settings: channel.settings || '{}',
     other: channel.other || '',
+    agent_plan_access_key: '',
+    agent_plan_secret_key: '',
     multi_key_mode: 'single',
     multi_key_type: channel.channel_info.multi_key_mode || 'random',
     batch_add_set_key_prefix_2_name: false,
@@ -529,6 +539,7 @@ export function transformChannelToFormDefaults(
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
+    agent_plan_usage_enabled: agentPlanUsageEnabled,
     advanced_custom: advancedCustom,
   }
 }
@@ -640,6 +651,13 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
   settingsObj.disable_task_polling_sleep =
     formData.disable_task_polling_sleep === true
 
+  if (formData.type === 45 || formData.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
+    settingsObj.agent_plan_usage_enabled =
+      formData.agent_plan_usage_enabled === true
+  } else if ('agent_plan_usage_enabled' in settingsObj) {
+    delete settingsObj.agent_plan_usage_enabled
+  }
+
   // Upstream model update settings (for model-fetchable channel types)
   if (MODEL_FETCHABLE_TYPES.has(formData.type)) {
     settingsObj.upstream_model_update_check_enabled =
@@ -721,6 +739,13 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     other: formData.other || '',
   }
 
+  if (formData.agent_plan_access_key?.trim()) {
+    channel.agent_plan_access_key = formData.agent_plan_access_key.trim()
+  }
+  if (formData.agent_plan_secret_key?.trim()) {
+    channel.agent_plan_secret_key = formData.agent_plan_secret_key.trim()
+  }
+
   // Clean up empty strings to null for optional fields
   Object.keys(channel).forEach((key) => {
     if (channel[key as keyof typeof channel] === '') {
@@ -771,6 +796,12 @@ export function transformFormDataToUpdatePayload(
   // Only include key if it was changed (not empty)
   if (formData.key && formData.key.trim()) {
     payload.key = formData.key
+  }
+  if (formData.agent_plan_access_key?.trim()) {
+    payload.agent_plan_access_key = formData.agent_plan_access_key.trim()
+  }
+  if (formData.agent_plan_secret_key?.trim()) {
+    payload.agent_plan_secret_key = formData.agent_plan_secret_key.trim()
   }
 
   // Clean up empty strings to null for optional fields

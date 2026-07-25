@@ -297,6 +297,9 @@ const SENSITIVE_FORM_FIELDS = [
   'upstream_model_update_check_enabled',
   'upstream_model_update_auto_sync_enabled',
   'upstream_model_update_ignored_models',
+  'agent_plan_usage_enabled',
+  'agent_plan_access_key',
+  'agent_plan_secret_key',
 ] satisfies (keyof ChannelFormValues)[]
 
 function readAdvancedSettingsPreference(): boolean {
@@ -4636,6 +4639,100 @@ export function ChannelMutateDrawer({
                                     </>
                                   )}
                                 </div>
+                              </div>
+                            </fieldset>
+                          </div>
+                        )}
+
+                        {(currentType === 45 ||
+                          currentType === CHANNEL_TYPE_ADVANCED_CUSTOM) && (
+                          <div className={sideDrawerSectionClassName()}>
+                            <CardHeading
+                              title={t('Agent Plan Usage')}
+                              icon={<RefreshCw className='h-4 w-4' />}
+                              iconTone='info'
+                            />
+                            <fieldset
+                              disabled={sensitiveLocked || isMultiKeyChannel}
+                              className='disabled:opacity-60'
+                            >
+                              <div className='divide-border border-y'>
+                                <FormField
+                                  control={form.control}
+                                  name='agent_plan_usage_enabled'
+                                  render={({ field }) => (
+                                    <FormItem className='flex items-center justify-between px-4 py-3'>
+                                      <div className='space-y-0.5'>
+                                        <FormLabel>
+                                          {t('Show Agent Plan usage')}
+                                        </FormLabel>
+                                        <FormDescription>
+                                          {t(
+                                            'Show official Agent Plan AFP remaining quotas on this channel. Only single-key channels are supported.'
+                                          )}
+                                        </FormDescription>
+                                      </div>
+                                      <FormControl>
+                                        <Switch
+                                          checked={field.value}
+                                          onCheckedChange={field.onChange}
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                              <div className='space-y-4 px-4 py-3'>
+                                <FormField
+                                  control={form.control}
+                                  name='agent_plan_access_key'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>
+                                        {t('VolcEngine Access Key')}
+                                      </FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          type='password'
+                                          autoComplete='off'
+                                          placeholder='AK...'
+                                          {...field}
+                                        />
+                                      </FormControl>
+                                      <FormDescription>
+                                        {t(
+                                          'Required for the official Agent Plan usage query. Leave blank to keep the saved value.'
+                                        )}
+                                      </FormDescription>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name='agent_plan_secret_key'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>
+                                        {t('VolcEngine Secret Key')}
+                                      </FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          type='password'
+                                          autoComplete='off'
+                                          placeholder='Enter VolcEngine Secret Key'
+                                          {...field}
+                                        />
+                                      </FormControl>
+                                      <FormDescription>
+                                        {t(
+                                          'Stored on the server and never returned to the browser. Leave blank to keep the saved value.'
+                                        )}
+                                      </FormDescription>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
                               </div>
                             </fieldset>
                           </div>

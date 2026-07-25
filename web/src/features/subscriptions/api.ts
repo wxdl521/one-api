@@ -31,6 +31,11 @@ import type {
   SubscriptionPayRequest,
   SelfSubscriptionData,
 } from './types'
+import type {
+  AgentPlanEligibleSourceChannel,
+  AgentPlanQuotaPool,
+  AgentPlanQuotaPoolPayload,
+} from '@/features/agent-plan-quota-pools/types'
 
 // ============================================================================
 // Admin Plan Management
@@ -225,15 +230,70 @@ export async function getPublicPlans(): Promise<ApiResponse<PlanRecord[]>> {
 }
 
 export async function updateBillingPreference(
-  preference: string
-): Promise<ApiResponse<{ billing_preference?: string }>> {
+  preference: string,
+  agentPlanWalletFallbackEnabled?: boolean
+): Promise<
+  ApiResponse<{
+    billing_preference?: string
+    agent_plan_wallet_fallback_enabled?: boolean
+  }>
+> {
   const res = await api.put('/api/subscription/self/preference', {
     billing_preference: preference,
+    ...(agentPlanWalletFallbackEnabled === undefined
+      ? {}
+      : {
+          agent_plan_wallet_fallback_enabled:
+            agentPlanWalletFallbackEnabled,
+        }),
   })
   return res.data
 }
 
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
+  return res.data
+}
+
+export async function getAgentPlanQuotaPools(): Promise<
+  ApiResponse<AgentPlanQuotaPool[]>
+> {
+  const res = await api.get('/api/subscription/admin/agent-plan-pools')
+  return res.data
+}
+
+export async function getAgentPlanEligibleSourceChannels(): Promise<
+  ApiResponse<AgentPlanEligibleSourceChannel[]>
+> {
+  const res = await api.get(
+    '/api/subscription/admin/agent-plan-pools/eligible-source-channels'
+  )
+  return res.data
+}
+
+export async function createAgentPlanQuotaPool(
+  data: AgentPlanQuotaPoolPayload
+): Promise<ApiResponse<AgentPlanQuotaPool>> {
+  const res = await api.post('/api/subscription/admin/agent-plan-pools', data)
+  return res.data
+}
+
+export async function updateAgentPlanQuotaPool(
+  id: number,
+  data: Partial<AgentPlanQuotaPoolPayload>
+): Promise<ApiResponse<AgentPlanQuotaPool>> {
+  const res = await api.put(`/api/subscription/admin/agent-plan-pools/${id}`, data)
+  return res.data
+}
+
+export async function syncAgentPlanQuotaPool(
+  id: number
+): Promise<ApiResponse<AgentPlanQuotaPool>> {
+  const res = await api.post(`/api/subscription/admin/agent-plan-pools/${id}/sync`)
+  return res.data
+}
+
+export async function deleteAgentPlanQuotaPool(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/subscription/admin/agent-plan-pools/${id}`)
   return res.data
 }

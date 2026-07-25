@@ -21,10 +21,16 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
+import { toIntlLocale } from '@/i18n/languages'
 import { cn } from '@/lib/utils'
 
+import type { AgentPlanChannelUsage } from '../api'
 import { CHANNEL_STATUS } from '../constants'
-import { isTagAggregateRow, parseGroupsList } from '../lib'
+import {
+  isAgentPlanUsageEnabled,
+  isTagAggregateRow,
+  parseGroupsList,
+} from '../lib'
 import type { Channel } from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
@@ -42,9 +48,13 @@ const SENSITIVE_MASK = '••••'
 function ChannelCardComponent({
   row,
   isSelected,
+  agentPlanUsage,
+  agentPlanUsageLoading,
 }: {
   row: Row<Channel>
   isSelected: boolean
+  agentPlanUsage: Record<string, AgentPlanChannelUsage>
+  agentPlanUsageLoading: boolean
 }) {
   const { t } = useTranslation()
   const { sensitiveVisible } = useChannels()
@@ -77,6 +87,9 @@ function ChannelCardComponent({
   const balanceCell = renderCell('balance')
   const responseCell = renderCell('response_time')
   const testCell = renderCell('test_time')
+  const showAgentPlanUsage =
+    !isTagRow && isAgentPlanUsageEnabled(row.original)
+  const usage = agentPlanUsage[String(row.original.id)]
 
   const labelClass = 'text-muted-foreground text-[11px] font-medium select-none'
 
@@ -133,6 +146,13 @@ function ChannelCardComponent({
             </div>
           </div>
 
+          {showAgentPlanUsage && (
+            <AgentPlanRemaining
+              usage={usage}
+              isLoading={agentPlanUsageLoading}
+            />
+          )}
+
           {/* Right column (sits on the right, content left-aligned). A single
             grid with content-sized columns keeps Priority/Weight and
             Response/Last Tested aligned without wasting horizontal space. */}
@@ -184,3 +204,66 @@ function ChannelCardComponent({
  * (filters, pagination, sensitive toggle, etc.) updates.
  */
 export const ChannelCard = memo(ChannelCardComponent)
+
+function AgentPlanRemaining({
+  usage,
+  isLoading,
+}: {
+  usage: AgentPlanChannelUsage | undefined
+  isLoading: boolean
+}) {
+  const { t, i18n } = useTranslation()
+  const formatter = new Intl.NumberFormat(
+    toIntlLocale(i18n.resolvedLanguage || i18n.language),
+    { maximumFractionDigits: 3 }
+  )
+
+  if (!usage) {
+    return (
+      <div className='text-muted-foreground min-w-32 text-xs'>
+        {isLoading
+          ? t('Loading Agent Plan usage...')
+          : t('Agent Plan usage unavailable')}
+      </div>
+    )
+  }
+
+  if (usage.status === 'unavailable') {
+    return (
+      <div className='text-muted-foreground min-w-32 text-xs'>
+        {t('Agent Plan usage unavailable')}
+      </div>
+    )
+  }
+
+  if (usage.status === 'credentials_required') {
+    return (
+      <div className='text-muted-foreground min-w-32 text-xs'>
+        {t('Configure VolcEngine Access Key and Secret Key')}
+      </div>
+    )
+  }
+
+  const rows = [
+    { label: t('5-hour remaining'), value: usage.five_hour.remaining },
+    { label: t('Weekly remaining'), value: usage.weekly.remaining },
+    { label: t('Monthly remaining'), value: usage.monthly.remaining },
+  ]
+
+  return (
+    <div className='min-w-32 space-y-1 text-xs'>
+      <div className='text-muted-foreground flex items-center gap-1 font-medium'>
+        <span>{t('Agent Plan Usage')}</span>
+        {usage.stale && <span>({t('Cached')})</span>}
+      </div>
+      {rows.map((row) => (
+        <div key={row.label} className='flex items-center justify-between gap-2'>
+          <span className='text-muted-foreground'>{row.label}</span>
+          <span className='font-medium tabular-nums'>
+            {formatter.format(Math.max(0, row.value))} AFP
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}

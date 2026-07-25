@@ -1,12 +1,15 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -16,15 +19,38 @@ import (
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan             model.SubscriptionPlan   `json:"plan"`
+	AgentPlanPackage *AgentPlanPackagePlanDTO `json:"agent_plan_package,omitempty"`
+}
+
+type AgentPlanPackagePlanDTO struct {
+	PoolId              int      `json:"pool_id"`
+	AllocationAFP       float64  `json:"allocation_afp"`
+	ScopeGroup          string   `json:"scope_group"`
+	ScopeModels         []string `json:"scope_models"`
+	AllowWalletFallback bool     `json:"allow_wallet_fallback"`
 }
 
 type BillingPreferenceRequest struct {
-	BillingPreference string `json:"billing_preference"`
+	BillingPreference              string `json:"billing_preference"`
+	AgentPlanWalletFallbackEnabled *bool  `json:"agent_plan_wallet_fallback_enabled"`
 }
 
 type SubscriptionBalancePayRequest struct {
 	PlanId int `json:"plan_id"`
+}
+
+func rejectAgentPlanPackagePublic(c *gin.Context, planID int) bool {
+	isPackage, err := model.IsAgentPlanPackageSubscriptionPlan(planID)
+	if err != nil {
+		common.ApiError(c, err)
+		return true
+	}
+	if isPackage {
+		common.ApiErrorMsg(c, "Agent Plan packages may only be assigned by an administrator")
+		return true
+	}
+	return false
 }
 
 // ---- User APIs ----
@@ -42,6 +68,14 @@ func GetSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		isPackage, err := model.IsAgentPlanPackageSubscriptionPlan(p.Id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if isPackage {
+			continue
+		}
 		p.NormalizeDefaults()
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
@@ -68,9 +102,10 @@ func GetSubscriptionSelf(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"billing_preference":                 pref,
+		"agent_plan_wallet_fallback_enabled": settingMap.AgentPlanWalletFallbackEnabled,
+		"subscriptions":                      activeSubscriptions, // all active subscriptions
+		"all_subscriptions":                  allSubscriptions,    // all subscriptions including expired
 	})
 }
 
@@ -90,11 +125,14 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	current := user.GetSetting()
 	current.BillingPreference = pref
+	if req.AgentPlanWalletFallbackEnabled != nil {
+		current.AgentPlanWalletFallbackEnabled = *req.AgentPlanWalletFallbackEnabled
+	}
 	if err := model.UpdateUserSetting(user.Id, current); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"billing_preference": pref})
+	common.ApiSuccess(c, gin.H{"billing_preference": pref, "agent_plan_wallet_fallback_enabled": current.AgentPlanWalletFallbackEnabled})
 }
 
 func SubscriptionRequestBalancePay(c *gin.Context) {
@@ -106,6 +144,9 @@ func SubscriptionRequestBalancePay(c *gin.Context) {
 	var req SubscriptionBalancePayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if rejectAgentPlanPackagePublic(c, req.PlanId) {
 		return
 	}
 
@@ -127,15 +168,67 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
 		p.NormalizeDefaults()
-		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
-		})
+		dto := SubscriptionPlanDTO{Plan: p}
+		packagePlan, err := model.GetAgentPlanPackagePlanBySubscriptionPlanID(p.Id)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			common.ApiError(c, err)
+			return
+		}
+		if packagePlan != nil {
+			var models []string
+			if err := common.UnmarshalJsonStr(packagePlan.ScopeModels, &models); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			dto.AgentPlanPackage = &AgentPlanPackagePlanDTO{PoolId: packagePlan.PoolId, AllocationAFP: float64(packagePlan.AllocationAFPMicros) / float64(service.AgentPlanAFPMicros), ScopeGroup: packagePlan.ScopeGroup, ScopeModels: models, AllowWalletFallback: packagePlan.AllowWalletFallback}
+		}
+		result = append(result, dto)
 	}
 	common.ApiSuccess(c, result)
 }
 
 type AdminUpsertSubscriptionPlanRequest struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan             model.SubscriptionPlan   `json:"plan"`
+	AgentPlanPackage *AgentPlanPackagePlanDTO `json:"agent_plan_package"`
+}
+
+func validateAgentPlanPackagePlan(req *AdminUpsertSubscriptionPlanRequest) (*model.AgentPlanPackagePlan, error) {
+	if req == nil || req.AgentPlanPackage == nil {
+		return nil, nil
+	}
+	config := req.AgentPlanPackage
+	if config.PoolId <= 0 || !isFinitePositive(config.AllocationAFP) || strings.TrimSpace(config.ScopeGroup) == "" || len(config.ScopeModels) == 0 {
+		return nil, errors.New("invalid agent plan package configuration")
+	}
+	for i := range config.ScopeModels {
+		config.ScopeModels[i] = strings.TrimSpace(config.ScopeModels[i])
+		if config.ScopeModels[i] == "" {
+			return nil, errors.New("agent plan package scope models must be nonempty")
+		}
+	}
+	pool, err := model.GetAgentPlanQuotaPoolById(config.PoolId)
+	if err != nil {
+		return nil, err
+	}
+	if pool.DisplayMultiplierMicros <= 0 || req.Plan.TotalAmount <= 0 || model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod) != model.SubscriptionResetNever {
+		return nil, errors.New("agent plan packages require finite nonzero quota and no reset period")
+	}
+	micros := config.AllocationAFP * float64(service.AgentPlanAFPMicros)
+	if micros < 1 {
+		return nil, errors.New("agent plan package allocation must be at least one micro-AFP")
+	}
+	if micros >= float64(math.MaxInt64) {
+		return nil, errors.New("agent plan package allocation is too large")
+	}
+	scopeModels, err := common.Marshal(config.ScopeModels)
+	if err != nil {
+		return nil, err
+	}
+	return &model.AgentPlanPackagePlan{PoolId: config.PoolId, AllocationAFPMicros: int64(math.Round(micros)), ScopeGroup: strings.TrimSpace(config.ScopeGroup), ScopeModels: string(scopeModels), AllowWalletFallback: config.AllowWalletFallback}, nil
+}
+
+func isFinitePositive(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
@@ -204,7 +297,26 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
-	err := model.DB.Create(&req.Plan).Error
+	packagePlan, err := validateAgentPlanPackagePlan(&req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		if packagePlan != nil {
+			if _, err := model.GetAgentPlanQuotaPoolForUpdate(tx, packagePlan.PoolId); err != nil {
+				return err
+			}
+		}
+		if err := tx.Create(&req.Plan).Error; err != nil {
+			return err
+		}
+		if packagePlan != nil {
+			packagePlan.SubscriptionPlanId = req.Plan.Id
+			return tx.Create(packagePlan).Error
+		}
+		return nil
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -279,7 +391,17 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
+	packagePlan, err := validateAgentPlanPackagePlan(&req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		if packagePlan != nil {
+			if _, err := model.GetAgentPlanQuotaPoolForUpdate(tx, packagePlan.PoolId); err != nil {
+				return err
+			}
+		}
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
@@ -310,6 +432,18 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
+		}
+		if packagePlan != nil {
+			var existing model.AgentPlanPackagePlan
+			err := tx.Where("subscription_plan_id = ?", id).First(&existing).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				packagePlan.SubscriptionPlanId = id
+				return tx.Create(packagePlan).Error
+			}
+			if err != nil {
+				return err
+			}
+			return tx.Model(&existing).Updates(map[string]interface{}{"pool_id": packagePlan.PoolId, "allocation_afp_micros": packagePlan.AllocationAFPMicros, "scope_group": packagePlan.ScopeGroup, "scope_models": packagePlan.ScopeModels, "allow_wallet_fallback": packagePlan.AllowWalletFallback}).Error
 		}
 		return nil
 	})
@@ -363,7 +497,7 @@ func AdminBindSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscription(req.UserId, req.PlanId, "")
+	msg, err := service.AdminAssignSubscription(c.Request.Context(), req.UserId, req.PlanId, "")
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -433,7 +567,7 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscription(userId, req.PlanId, "")
+	msg, err := service.AdminAssignSubscription(c.Request.Context(), userId, req.PlanId, "")
 	if err != nil {
 		common.ApiError(c, err)
 		return

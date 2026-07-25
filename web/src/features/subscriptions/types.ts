@@ -50,6 +50,22 @@ export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
 
 export interface PlanRecord {
   plan: SubscriptionPlan
+  agent_plan_package?: AgentPlanPackagePlan
+}
+
+export interface AgentPlanPackagePlan {
+  pool_id: number
+  allocation_afp: number
+  scope_group: string
+  scope_models: string[]
+  allow_wallet_fallback: boolean
+}
+
+export interface AgentPlanPackageAllocation {
+  display_multiplier_micros: number
+  scope_group: string
+  scope_models: string[]
+  allow_wallet_fallback: boolean
 }
 
 // ============================================================================
@@ -71,8 +87,16 @@ export const userSubscriptionSchema = z.object({
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
+export const agentPlanPackageAllocationSchema = z.object({
+  display_multiplier_micros: z.number(),
+  scope_group: z.string(),
+  scope_models: z.array(z.string()),
+  allow_wallet_fallback: z.boolean(),
+})
+
 export interface UserSubscriptionRecord {
   subscription: UserSubscription
+  agent_plan_package?: z.infer<typeof agentPlanPackageAllocationSchema>
 }
 
 // ============================================================================
@@ -87,6 +111,7 @@ export interface ApiResponse<T = unknown> {
 
 export interface PlanPayload {
   plan: Partial<SubscriptionPlan>
+  agent_plan_package?: AgentPlanPackagePlan
 }
 
 export interface SubscriptionPayRequest {
@@ -140,6 +165,7 @@ export interface SubscriptionResetResult {
 
 export interface SelfSubscriptionData {
   billing_preference: string
+  agent_plan_wallet_fallback_enabled?: boolean
   subscriptions: UserSubscriptionRecord[]
   all_subscriptions: UserSubscriptionRecord[]
 }

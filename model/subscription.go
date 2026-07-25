@@ -34,8 +34,9 @@ const (
 )
 
 var (
-	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
-	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
+	ErrSubscriptionOrderNotFound         = errors.New("subscription order not found")
+	ErrSubscriptionOrderStatusInvalid    = errors.New("subscription order status invalid")
+	ErrAgentPlanPackageQuotaInsufficient = errors.New("agent plan package quota insufficient")
 )
 
 const (
@@ -293,7 +294,15 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 }
 
 type SubscriptionSummary struct {
-	Subscription *UserSubscription `json:"subscription"`
+	Subscription     *UserSubscription                  `json:"subscription"`
+	AgentPlanPackage *AgentPlanPackageAllocationSummary `json:"agent_plan_package,omitempty"`
+}
+
+type AgentPlanPackageAllocationSummary struct {
+	DisplayMultiplierMicros int64    `json:"display_multiplier_micros"`
+	ScopeGroup              string   `json:"scope_group"`
+	ScopeModels             []string `json:"scope_models"`
+	AllowWalletFallback     bool     `json:"allow_wallet_fallback"`
 }
 
 type SubscriptionResetResult struct {
@@ -410,6 +419,21 @@ func getSubscriptionPlanByIdTx(tx *gorm.DB, id int) (*SubscriptionPlan, error) {
 	return &plan, nil
 }
 
+// GetSubscriptionPlanForUpdate reads a plan from the caller's transaction
+// under the shared lock convention. Assignment flows use it to snapshot plan
+// duration and group settings atomically with the created subscription.
+func GetSubscriptionPlanForUpdate(tx *gorm.DB, id int) (*SubscriptionPlan, error) {
+	if tx == nil || id <= 0 {
+		return nil, errors.New("invalid subscription plan lock arguments")
+	}
+	plan := &SubscriptionPlan{}
+	if err := lockForUpdate(tx).Where("id = ?", id).First(plan).Error; err != nil {
+		return nil, err
+	}
+	plan.NormalizeDefaults()
+	return plan, nil
+}
+
 func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {
 	if userId <= 0 || planId <= 0 {
 		return 0, errors.New("invalid userId or planId")
@@ -502,7 +526,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	nowUnix := GetDBTimestamp()
+	nowUnix := GetDBTimestampTx(tx)
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, plan)
 	if err != nil {
@@ -593,9 +617,16 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
+		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
 		if err != nil {
 			return err
+		}
+		isPackage, err := IsAgentPlanPackageSubscriptionPlanTx(tx, plan.Id)
+		if err != nil {
+			return err
+		}
+		if isPackage {
+			return errors.New("agent plan packages may only be assigned by an administrator")
 		}
 		if !plan.Enabled {
 			// still allow completion for already purchased orders
@@ -757,6 +788,13 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		if err != nil {
 			return err
 		}
+		isPackage, err := IsAgentPlanPackageSubscriptionPlanTx(tx, plan.Id)
+		if err != nil {
+			return err
+		}
+		if isPackage {
+			return errors.New("agent plan packages may only be assigned by an administrator")
+		}
 		if !plan.Enabled {
 			return errors.New("套餐未启用")
 		}
@@ -903,12 +941,34 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
 	}
+	ids := make([]int, 0, len(subs))
+	for _, sub := range subs {
+		ids = append(ids, sub.Id)
+	}
+	allocationsBySubscriptionID := make(map[int]AgentPlanPackageAllocationSummary)
+	var allocations []AgentPlanPackageAllocation
+	if err := DB.Where("user_subscription_id IN ?", ids).Find(&allocations).Error; err == nil {
+		for _, allocation := range allocations {
+			var models []string
+			if common.UnmarshalJsonStr(allocation.ScopeModels, &models) != nil {
+				continue
+			}
+			allocationsBySubscriptionID[allocation.UserSubscriptionId] = AgentPlanPackageAllocationSummary{
+				DisplayMultiplierMicros: allocation.DisplayMultiplierMicros,
+				ScopeGroup:              allocation.ScopeGroup,
+				ScopeModels:             models,
+				AllowWalletFallback:     allocation.AllowWalletFallback,
+			}
+		}
+	}
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
-		result = append(result, SubscriptionSummary{
-			Subscription: &subCopy,
-		})
+		summary := SubscriptionSummary{Subscription: &subCopy}
+		if allocation, ok := allocationsBySubscriptionID[sub.Id]; ok {
+			summary.AgentPlanPackage = &allocation
+		}
+		result = append(result, summary)
 	}
 	return result
 }
@@ -1089,6 +1149,13 @@ func AdminResetUserSubscriptionsByPlan(userId int, planId int, advanceResetTime 
 		if err != nil {
 			return err
 		}
+		isPackage, err := IsAgentPlanPackageSubscriptionPlanTx(tx, plan.Id)
+		if err != nil {
+			return err
+		}
+		if isPackage {
+			return errors.New("agent plan packages cannot be reset")
+		}
 		result, err = adminResetUserSubscriptionsByPlanTx(tx, userId, plan, now, advanceResetTime)
 		return err
 	})
@@ -1109,6 +1176,13 @@ func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*Subscripti
 		if err != nil {
 			return err
 		}
+		isPackage, err := IsAgentPlanPackageSubscriptionPlanTx(tx, plan.Id)
+		if err != nil {
+			return err
+		}
+		if isPackage {
+			return errors.New("agent plan packages cannot be reset")
+		}
 		result, err = adminResetPlanSubscriptionsTx(tx, plan, now, advanceResetTime)
 		return err
 	})
@@ -1124,6 +1198,58 @@ type SubscriptionPreConsumeResult struct {
 	AmountTotal        int64
 	AmountUsedBefore   int64
 	AmountUsedAfter    int64
+}
+
+// AgentPlanPackageMatch is the safe allocation snapshot used to decide package
+// funding. It intentionally excludes pool inventory and source credentials.
+type AgentPlanPackageMatch struct {
+	Subscription UserSubscription
+	Allocation   AgentPlanPackageAllocation
+}
+
+// FindMatchingAgentPlanPackage returns the earliest-ending active package
+// subscription whose immutable scope snapshot matches the final relay group and
+// origin model. A nil match means package billing must not be forced.
+func FindMatchingAgentPlanPackage(userId int, usingGroup string, modelName string) (*AgentPlanPackageMatch, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	now := GetDBTimestamp()
+	var subs []UserSubscription
+	if err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Order("end_time asc, id asc").Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, nil
+	}
+	ids := make([]int, 0, len(subs))
+	for _, sub := range subs {
+		ids = append(ids, sub.Id)
+	}
+	var allocations []AgentPlanPackageAllocation
+	if err := DB.Where("user_subscription_id IN ? AND scope_group = ?", ids, strings.TrimSpace(usingGroup)).Find(&allocations).Error; err != nil {
+		return nil, err
+	}
+	allocationsBySubscriptionID := make(map[int]AgentPlanPackageAllocation, len(allocations))
+	for _, allocation := range allocations {
+		var models []string
+		if err := common.UnmarshalJsonStr(allocation.ScopeModels, &models); err != nil {
+			continue
+		}
+		for _, scopedModel := range models {
+			if scopedModel == modelName {
+				allocationsBySubscriptionID[allocation.UserSubscriptionId] = allocation
+				break
+			}
+		}
+	}
+	for _, sub := range subs {
+		if allocation, ok := allocationsBySubscriptionID[sub.Id]; ok {
+			return &AgentPlanPackageMatch{Subscription: sub, Allocation: allocation}, nil
+		}
+	}
+	return nil, nil
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1285,7 +1411,7 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1331,8 +1457,35 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
+		packageSubscriptions, err := agentPlanPackageSubscriptionsForScopeTx(tx, subs, usingGroup, modelName)
+		if err != nil {
+			return err
+		}
+		for _, sub := range packageSubscriptions {
+			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			if err != nil {
+				return err
+			}
+			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+				return err
+			}
+			if sub.AmountTotal > 0 && sub.AmountTotal-sub.AmountUsed >= amount {
+				return preConsumeSubscriptionTx(tx, returnValue, requestId, userId, &sub, amount)
+			}
+		}
+		if len(packageSubscriptions) > 0 {
+			return ErrAgentPlanPackageQuotaInsufficient
+		}
+
+		packageSubscriptionIDs, err := agentPlanPackageSubscriptionIDsTx(tx, subs)
+		if err != nil {
+			return err
+		}
 		for _, candidate := range subs {
 			sub := candidate
+			if _, isPackage := packageSubscriptionIDs[sub.Id]; isPackage {
+				continue
+			}
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
 			if err != nil {
 				return err
@@ -1347,38 +1500,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					continue
 				}
 			}
-			record := &SubscriptionPreConsumeRecord{
-				RequestId:          requestId,
-				UserId:             userId,
-				UserSubscriptionId: sub.Id,
-				PreConsumed:        amount,
-				Status:             "consumed",
-			}
-			if err := tx.Create(record).Error; err != nil {
-				var dup SubscriptionPreConsumeRecord
-				if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
-					if dup.Status == "refunded" {
-						return errors.New("subscription pre-consume already refunded")
-					}
-					returnValue.UserSubscriptionId = sub.Id
-					returnValue.PreConsumed = dup.PreConsumed
-					returnValue.AmountTotal = sub.AmountTotal
-					returnValue.AmountUsedBefore = sub.AmountUsed
-					returnValue.AmountUsedAfter = sub.AmountUsed
-					return nil
-				}
-				return err
-			}
-			sub.AmountUsed += amount
-			if err := tx.Save(&sub).Error; err != nil {
-				return err
-			}
-			returnValue.UserSubscriptionId = sub.Id
-			returnValue.PreConsumed = amount
-			returnValue.AmountTotal = sub.AmountTotal
-			returnValue.AmountUsedBefore = usedBefore
-			returnValue.AmountUsedAfter = sub.AmountUsed
-			return nil
+			return preConsumeSubscriptionTx(tx, returnValue, requestId, userId, &sub, amount)
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
 	})
@@ -1386,6 +1508,92 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		return nil, err
 	}
 	return returnValue, nil
+}
+
+func agentPlanPackageSubscriptionIDsTx(tx *gorm.DB, subs []UserSubscription) (map[int]struct{}, error) {
+	ids := make([]int, 0, len(subs))
+	for _, sub := range subs {
+		ids = append(ids, sub.Id)
+	}
+	packageIDs := make(map[int]struct{})
+	if len(ids) == 0 {
+		return packageIDs, nil
+	}
+	var allocations []AgentPlanPackageAllocation
+	if err := tx.Where("user_subscription_id IN ?", ids).Find(&allocations).Error; err != nil {
+		return nil, err
+	}
+	for _, allocation := range allocations {
+		packageIDs[allocation.UserSubscriptionId] = struct{}{}
+	}
+	return packageIDs, nil
+}
+
+func agentPlanPackageSubscriptionsForScopeTx(tx *gorm.DB, subs []UserSubscription, usingGroup string, modelName string) ([]UserSubscription, error) {
+	ids := make([]int, 0, len(subs))
+	for _, sub := range subs {
+		ids = append(ids, sub.Id)
+	}
+	if len(ids) == 0 {
+		return []UserSubscription{}, nil
+	}
+	var allocations []AgentPlanPackageAllocation
+	if err := tx.Where("user_subscription_id IN ? AND scope_group = ?", ids, strings.TrimSpace(usingGroup)).Find(&allocations).Error; err != nil {
+		return nil, err
+	}
+	matchingIDs := make(map[int]struct{}, len(allocations))
+	for _, allocation := range allocations {
+		var models []string
+		if err := common.UnmarshalJsonStr(allocation.ScopeModels, &models); err != nil {
+			continue
+		}
+		for _, scopedModel := range models {
+			if scopedModel == modelName {
+				matchingIDs[allocation.UserSubscriptionId] = struct{}{}
+				break
+			}
+		}
+	}
+	result := make([]UserSubscription, 0, len(matchingIDs))
+	for _, sub := range subs {
+		if _, ok := matchingIDs[sub.Id]; ok {
+			result = append(result, sub)
+		}
+	}
+	return result, nil
+}
+
+func preConsumeSubscriptionTx(tx *gorm.DB, result *SubscriptionPreConsumeResult, requestId string, userId int, sub *UserSubscription, amount int64) error {
+	if tx == nil || result == nil || sub == nil {
+		return errors.New("invalid subscription pre-consume arguments")
+	}
+	usedBefore := sub.AmountUsed
+	record := &SubscriptionPreConsumeRecord{RequestId: requestId, UserId: userId, UserSubscriptionId: sub.Id, PreConsumed: amount, Status: "consumed"}
+	if err := tx.Create(record).Error; err != nil {
+		var duplicate SubscriptionPreConsumeRecord
+		if err2 := tx.Where("request_id = ?", requestId).First(&duplicate).Error; err2 == nil {
+			if duplicate.Status == "refunded" {
+				return errors.New("subscription pre-consume already refunded")
+			}
+			result.UserSubscriptionId = sub.Id
+			result.PreConsumed = duplicate.PreConsumed
+			result.AmountTotal = sub.AmountTotal
+			result.AmountUsedBefore = sub.AmountUsed
+			result.AmountUsedAfter = sub.AmountUsed
+			return nil
+		}
+		return err
+	}
+	sub.AmountUsed += amount
+	if err := tx.Save(sub).Error; err != nil {
+		return err
+	}
+	result.UserSubscriptionId = sub.Id
+	result.PreConsumed = amount
+	result.AmountTotal = sub.AmountTotal
+	result.AmountUsedBefore = usedBefore
+	result.AmountUsedAfter = sub.AmountUsed
+	return nil
 }
 
 // RefundSubscriptionPreConsume is idempotent and refunds pre-consumed subscription quota by requestId.

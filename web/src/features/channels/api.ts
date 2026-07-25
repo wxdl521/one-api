@@ -59,6 +59,25 @@ export type CodexResetCreditsResponse = CodexUsageResponse
 
 export type CodexUsageResetResponse = CodexUsageResponse
 
+export type AgentPlanUsageWindow = {
+  remaining: number
+  reset_at: number
+}
+
+export type AgentPlanChannelUsage = {
+  five_hour: AgentPlanUsageWindow
+  weekly: AgentPlanUsageWindow
+  monthly: AgentPlanUsageWindow
+  updated_at: number
+  stale: boolean
+  status: 'available' | 'stale' | 'unavailable' | 'credentials_required'
+}
+
+export type AgentPlanUsageResponse = {
+  success: boolean
+  data: Record<string, AgentPlanChannelUsage>
+}
+
 export type CodexCredentialRefreshResponse = {
   success: boolean
   message?: string
@@ -327,6 +346,17 @@ export async function getCodexUsage(
 ): Promise<CodexUsageResponse> {
   const res = await api.get(
     `/api/channel/${channelId}/codex/usage`,
+    channelActionConfig({ disableDuplicate: true })
+  )
+  return res.data
+}
+
+export async function getAgentPlanUsage(
+  channelIDs: number[]
+): Promise<AgentPlanUsageResponse> {
+  const res = await api.post(
+    '/api/channel/agent-plan-usage',
+    { channel_ids: channelIDs },
     channelActionConfig({ disableDuplicate: true })
   )
   return res.data

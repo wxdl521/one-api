@@ -143,6 +143,72 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	assert.Equal(t, float64(1), auditData.Operation.Params["count"])
 }
 
+func TestPublicChannelReadResponsesDoNotExposeCredentials(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	channel := &model.Channel{
+		Name:               "credentialed channel",
+		Key:                "channel-api-key",
+		AgentPlanAccessKey: "agent-plan-access-key",
+		AgentPlanSecretKey: "agent-plan-secret-key",
+		Models:             "gpt-test",
+		Group:              "default",
+		Tag:                common.GetPointer("credentialed-tag"),
+	}
+	require.NoError(t, db.Create(channel).Error)
+
+	tests := []struct {
+		name    string
+		url     string
+		handler gin.HandlerFunc
+		params  gin.Params
+		detail  bool
+	}{
+		{name: "list", url: "/api/channel/?p=1&page_size=20", handler: GetAllChannels},
+		{name: "tag list", url: "/api/channel/?p=1&page_size=20&tag_mode=true", handler: GetAllChannels},
+		{name: "search", url: "/api/channel/search?keyword=credentialed", handler: SearchChannels},
+		{name: "tag search", url: "/api/channel/search?keyword=credentialed&tag_mode=true", handler: SearchChannels},
+		{name: "detail", url: "/api/channel/1", handler: GetChannel, params: gin.Params{{Key: "id", Value: fmt.Sprintf("%d", channel.Id)}}, detail: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Params = test.params
+			ctx.Request = httptest.NewRequest(http.MethodGet, test.url, nil)
+
+			test.handler(ctx)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			if test.detail {
+				var response struct {
+					Success bool          `json:"success"`
+					Data    model.Channel `json:"data"`
+				}
+				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+				require.True(t, response.Success)
+				assert.Empty(t, response.Data.Key)
+				assert.Empty(t, response.Data.AgentPlanAccessKey)
+				assert.Empty(t, response.Data.AgentPlanSecretKey)
+				return
+			}
+
+			var response struct {
+				Success bool `json:"success"`
+				Data    struct {
+					Items []model.Channel `json:"items"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			require.True(t, response.Success)
+			require.Len(t, response.Data.Items, 1)
+			assert.Empty(t, response.Data.Items[0].Key)
+			assert.Empty(t, response.Data.Items[0].AgentPlanAccessKey)
+			assert.Empty(t, response.Data.Items[0].AgentPlanSecretKey)
+		})
+	}
+}
+
 func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		TieredBillingSnapshot: &billingexpr.BillingSnapshot{

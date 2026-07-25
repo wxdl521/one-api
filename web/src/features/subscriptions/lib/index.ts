@@ -22,5 +22,6 @@ export {
   PLAN_FORM_DEFAULTS,
   planToFormValues,
   formValuesToPlanPayload,
+  withAgentPlanPackage,
   type PlanFormValues,
 } from './plan-form'

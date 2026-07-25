@@ -66,3 +66,56 @@ func TestAdvancedCustomChannelRequiresModelListRouteOnlyWhenUpdateChecksEnabled(
 		})
 	}
 }
+
+func TestChannelOtherSettingsPreservesAgentPlanUsageEnabled(t *testing.T) {
+	channel := &Channel{}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{AgentPlanUsageEnabled: true})
+
+	assert.True(t, channel.GetOtherSettings().AgentPlanUsageEnabled)
+}
+
+func TestAgentPlanUsageRequiresEligibleSingleKeyChannel(t *testing.T) {
+	tests := []struct {
+		name    string
+		channel Channel
+		wantErr string
+	}{
+		{
+			name: "VolcEngine single-key channel is eligible",
+			channel: Channel{
+				Type: constant.ChannelTypeVolcEngine,
+			},
+		},
+		{
+			name: "unsupported channel type is rejected",
+			channel: Channel{
+				Type: constant.ChannelTypeOpenAI,
+			},
+			wantErr: "VolcEngine or Advanced Custom",
+		},
+		{
+			name: "multi-key channel is rejected",
+			channel: Channel{
+				Type:        constant.ChannelTypeVolcEngine,
+				ChannelInfo: ChannelInfo{IsMultiKey: true},
+			},
+			wantErr: "single-key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.channel.SetOtherSettings(dto.ChannelOtherSettings{
+				AgentPlanUsageEnabled: true,
+			})
+
+			err := tt.channel.ValidateSettings()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}

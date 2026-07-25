@@ -145,6 +145,11 @@ export function useSidebarData(): SidebarData {
             icon: CreditCard,
           },
           {
+            title: t('Agent Plan quota pools'),
+            url: '/agent-plan-quota-pools',
+            icon: CreditCard,
+          },
+          {
             title: t('System Info'),
             url: '/system-info',
             icon: ServerCog,

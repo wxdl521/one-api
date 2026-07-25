@@ -21,7 +21,11 @@ import { z } from 'zod'
 
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
-import type { SubscriptionPlan, PlanPayload } from '../types'
+import type {
+  AgentPlanPackagePlan,
+  PlanPayload,
+  SubscriptionPlan,
+} from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
   return z.object({
@@ -121,4 +125,12 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       downgrade_group: values.downgrade_group || '',
     },
   }
+}
+
+export function withAgentPlanPackage(
+  payload: PlanPayload,
+  config: AgentPlanPackagePlan | null
+): PlanPayload {
+  if (!config) return payload
+  return { ...payload, agent_plan_package: config }
 }
