@@ -15,7 +15,7 @@ Supported first-release model IDs are the `relay/channel/task/doubao.ModelList` 
 1. A user configures only The One base URL and an API token in Cherry Studio or Open WebUI.
 2. The user selects a Seedance model and submits a normal text chat message.
 3. The One accepts `POST /v1/chat/completions`, detects an eligible Seedance model, and submits the equivalent internal video task.
-4. The bridge waits for a configurable window, defaulting to 90 seconds.
+4. The bridge waits for a configurable window, defaulting to 5 minutes.
 5. If the task completes in that window, the response is an OpenAI chat completion whose assistant content is a Markdown video link. The link plays or downloads through The One's authorized video proxy.
 6. If the task is still running at the deadline, the response is an OpenAI chat completion whose assistant content contains a secure task-page link. The page polls its task-status endpoint and changes to an embedded player/download control after completion.
 7. If the upstream task fails while waiting, the bridge returns a normal OpenAI-style error. If it fails after the task page has been returned, the page renders the sanitized failure message.
@@ -29,7 +29,7 @@ For `stream: true`, the bridge holds the stream during the same wait window and 
 Add a server-level `ChatVideoBridge` setting group:
 
 - `Enabled` (default `false`) keeps the feature opt-in.
-- `MaxWaitSeconds` (default `90`, bounded to `0..300`) controls the synchronous wait window.
+- `MaxWaitSeconds` (default `300`, bounded to `0..600`) controls the synchronous wait window.
 - `TaskPageTTLSeconds` (default `86400`, bounded to `300..604800`) controls task-page access tickets.
 - `Models` is an explicit allow-list. Defaults are empty; admins must opt in to the exact configured Seedance model IDs they want exposed as chat models.
 
