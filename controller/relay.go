@@ -495,13 +495,23 @@ func RelayTask(c *gin.Context) {
 		return
 	}
 
-	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
+	_, taskErr := SubmitTask(c, relayInfo)
+	if taskErr != nil {
 		respondTaskError(c, taskErr)
-		return
+	}
+}
+
+// SubmitTask runs the shared asynchronous-task submission lifecycle used by
+// public task endpoints and internal callers such as the chat-video bridge.
+// Upstream adaptors retain ownership of the protocol response; callers that
+// need a different response format can suppress their adaptor response before
+// invoking this function.
+func SubmitTask(c *gin.Context, relayInfo *relaycommon.RelayInfo) (task *model.Task, taskErr *taskdto.TaskError) {
+	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
+		return nil, taskErr
 	}
 
 	var result *relay.TaskSubmitResult
-	var taskErr *taskdto.TaskError
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)
@@ -579,7 +589,7 @@ func RelayTask(c *gin.Context) {
 		}
 		service.LogTaskConsumption(c, relayInfo)
 
-		task := model.InitTask(result.Platform, relayInfo)
+		task = model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
@@ -598,12 +608,11 @@ func RelayTask(c *gin.Context) {
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			task = nil
 		}
 	}
 
-	if taskErr != nil {
-		respondTaskError(c, taskErr)
-	}
+	return task, taskErr
 }
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）

@@ -25,6 +25,7 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { ChatVideoBridgeSection } from './chat-video-bridge-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -123,6 +124,24 @@ const OPERATIONS_SECTIONS = [
             settings['performance_setting.monitor_memory_threshold'] ?? 90,
           'performance_setting.monitor_disk_threshold':
             settings['performance_setting.monitor_disk_threshold'] ?? 95,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'chat-video-bridge',
+    titleKey: 'Chat Video Bridge',
+    build: (settings: OperationsSettings) => (
+      <ChatVideoBridgeSection
+        defaultValues={{
+          'chat_video_bridge.enabled':
+            settings['chat_video_bridge.enabled'] ?? false,
+          'chat_video_bridge.models':
+            settings['chat_video_bridge.models'] ?? '[]',
+          'chat_video_bridge.max_wait_seconds':
+            settings['chat_video_bridge.max_wait_seconds'] ?? 300,
+          'chat_video_bridge.task_page_ttl_seconds':
+            settings['chat_video_bridge.task_page_ttl_seconds'] ?? 86400,
         }}
       />
     ),

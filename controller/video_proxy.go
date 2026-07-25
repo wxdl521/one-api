@@ -22,12 +22,24 @@ import (
 
 // videoProxyError returns a standardized OpenAI-style error response.
 func videoProxyError(c *gin.Context, status int, errType, message string) {
+	if c.GetBool(chatVideoPublicContentContextKey) {
+		// The signed public task page must not disclose upstream URLs, channel
+		// diagnostics, or provider response text through the content proxy.
+		message = "Video content is unavailable"
+	}
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"message": message,
 			"type":    errType,
 		},
 	})
+}
+
+func videoProxyCacheControl(c *gin.Context) string {
+	if c.GetBool(chatVideoPublicContentContextKey) {
+		return "private, no-store"
+	}
+	return "public, max-age=86400"
 }
 
 func VideoProxy(c *gin.Context) {
@@ -175,7 +187,7 @@ func VideoProxy(c *gin.Context) {
 		}
 	}
 
-	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	c.Writer.Header().Set("Cache-Control", videoProxyCacheControl(c))
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
@@ -209,7 +221,7 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 	}
 
 	c.Writer.Header().Set("Content-Type", mimeType)
-	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	c.Writer.Header().Set("Cache-Control", videoProxyCacheControl(c))
 	c.Writer.WriteHeader(http.StatusOK)
 	_, err = c.Writer.Write(videoBytes)
 	return err

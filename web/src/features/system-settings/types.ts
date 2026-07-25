@@ -360,6 +360,10 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'chat_video_bridge.enabled': boolean
+  'chat_video_bridge.models': string
+  'chat_video_bridge.max_wait_seconds': number
+  'chat_video_bridge.task_page_ttl_seconds': number
 }
 
 export type SecuritySettings = {

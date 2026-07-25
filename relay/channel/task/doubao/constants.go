@@ -11,6 +11,17 @@ var ModelList = []string{
 	"doubao-seedance-2-0-fast-260128",
 }
 
+// TextToVideoModelList is the subset that can safely accept the chat-video
+// bridge's text-only request payload. Image-to-video models deliberately stay
+// out of this list because the bridge has no image input in V1.
+var TextToVideoModelList = []string{
+	"doubao-seedance-1-0-pro-250528",
+	"doubao-seedance-1-0-lite-t2v",
+	"doubao-seedance-1-5-pro-251215",
+	"doubao-seedance-2-0-260128",
+	"doubao-seedance-2-0-fast-260128",
+}
+
 var ChannelName = "doubao-video"
 
 // videoPriceKey 价格表的键：输出分辨率档（is1080p/is4k 均为 false 即 480p/720p 基准档）、输入是否含视频。

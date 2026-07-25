@@ -39,6 +39,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
+	if c.GetBool("chat_video_bridge") {
+		// Preserve the original client intent for admins after the bridge has
+		// rewritten the internal request into the standard video task route.
+		other["chat_video_bridge"] = true
+	}
 	other["model_price"] = info.PriceData.ModelPrice
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio

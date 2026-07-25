@@ -80,6 +80,11 @@ func SetRelayRouter(router *gin.Engine) {
 		})
 	}
 	{
+		chatRouter := relayV1Router.Group("")
+		chatRouter.Use(controller.PrepareChatVideoBridge(), middleware.Distribute())
+		chatRouter.POST("/chat/completions", controller.RelayChatCompletions)
+	}
+	{
 		//http router
 		httpRouter := relayV1Router.Group("")
 		httpRouter.Use(middleware.Distribute())
@@ -93,10 +98,6 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/completions", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAI)
 		})
-		httpRouter.POST("/chat/completions", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatOpenAI)
-		})
-
 		// response related routes
 		httpRouter.POST("/responses", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIResponses)

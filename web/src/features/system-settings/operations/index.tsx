@@ -56,6 +56,10 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'chat_video_bridge.enabled': false,
+  'chat_video_bridge.models': '[]',
+  'chat_video_bridge.max_wait_seconds': 300,
+  'chat_video_bridge.task_page_ttl_seconds': 86400,
 }
 
 export function OperationsSettings() {

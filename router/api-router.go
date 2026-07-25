@@ -29,6 +29,12 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)
 		apiRouter.GET("/about", controller.GetAbout)
+		chatVideoTaskRoute := apiRouter.Group("/chat-video/tasks")
+		chatVideoTaskRoute.Use(middleware.CriticalRateLimit())
+		{
+			chatVideoTaskRoute.GET("/:task_id", controller.GetChatVideoTaskStatus)
+			chatVideoTaskRoute.GET("/:task_id/content", controller.ChatVideoTaskContent)
+		}
 		//apiRouter.GET("/midjourney", controller.GetMidjourney)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
 		apiRouter.GET("/pricing", middleware.HeaderNavModuleAuth("pricing"), controller.GetPricing)

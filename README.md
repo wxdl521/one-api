@@ -339,6 +339,15 @@ docker run --name the-one -d --restart always \
 | `PYROSCOPE_BLOCK_RATE` | Pyroscope block sampling rate | `5` |
 | `HOSTNAME` | Hostname tag for Pyroscope | `the-one` |
 
+> **Chat Video Bridge reverse proxy:** the optional bridge can keep a `/v1/chat/completions` request open for up to 10 minutes before returning a secure task-page link. When it is enabled, configure Nginx or another reverse proxy with at least 11-minute upstream read and send timeouts:
+>
+> ```nginx
+> proxy_read_timeout 11m;
+> proxy_send_timeout 11m;
+> ```
+>
+> Configure the bridge in **System Settings → Operations → Chat Video Bridge**. It is disabled by default; enable only verified Seedance models first. The public server address must use your HTTPS domain because it is used to create signed task and video links.
+
 📖 **Complete configuration:** [Environment Variables Documentation](https://docs.theone.pro/en/docs/installation/config-maintenance/environment-variables)
 
 </details>

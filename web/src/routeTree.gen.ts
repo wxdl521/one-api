@@ -53,6 +53,7 @@ import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
+import { Route as ChatVideoTasksTaskIdRouteImport } from './routes/chat-video/tasks/$taskId'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
 import { Route as AuthenticatedSystemSettingsAuthSectionRouteImport } from './routes/_authenticated/system-settings/auth/$section'
@@ -304,6 +305,11 @@ const AuthenticatedWalletIndexRoute =
     path: '/wallet/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ChatVideoTasksTaskIdRoute = ChatVideoTasksTaskIdRouteImport.update({
+  id: '/chat-video/tasks/$taskId',
+  path: '/chat-video/tasks/$taskId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingModelIdIndexRoute = PricingModelIdIndexRouteImport.update({
   id: '/pricing/$modelId/',
   path: '/pricing/$modelId/',
@@ -423,6 +429,7 @@ export interface FileRoutesByFullPath {
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/chat-video/tasks/$taskId': typeof ChatVideoTasksTaskIdRoute
   '/agent-plan-quota-pools/': typeof AuthenticatedAgentPlanQuotaPoolsIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -481,6 +488,7 @@ export interface FileRoutesByTo {
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/chat-video/tasks/$taskId': typeof ChatVideoTasksTaskIdRoute
   '/agent-plan-quota-pools': typeof AuthenticatedAgentPlanQuotaPoolsIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
@@ -543,6 +551,7 @@ export interface FileRoutesById {
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/chat-video/tasks/$taskId': typeof ChatVideoTasksTaskIdRoute
   '/_authenticated/agent-plan-quota-pools/': typeof AuthenticatedAgentPlanQuotaPoolsIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -604,6 +613,7 @@ export interface FileRouteTypes {
     | '/errors/$error'
     | '/models/$section'
     | '/usage-logs/$section'
+    | '/chat-video/tasks/$taskId'
     | '/agent-plan-quota-pools/'
     | '/channels/'
     | '/dashboard/'
@@ -662,6 +672,7 @@ export interface FileRouteTypes {
     | '/errors/$error'
     | '/models/$section'
     | '/usage-logs/$section'
+    | '/chat-video/tasks/$taskId'
     | '/agent-plan-quota-pools'
     | '/channels'
     | '/dashboard'
@@ -723,6 +734,7 @@ export interface FileRouteTypes {
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
     | '/_authenticated/usage-logs/$section'
+    | '/chat-video/tasks/$taskId'
     | '/_authenticated/agent-plan-quota-pools/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
@@ -770,6 +782,7 @@ export interface RootRouteChildren {
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
+  ChatVideoTasksTaskIdRoute: typeof ChatVideoTasksTaskIdRoute
   PricingModelIdIndexRoute: typeof PricingModelIdIndexRoute
 }
 
@@ -1083,6 +1096,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWalletIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/chat-video/tasks/$taskId': {
+      id: '/chat-video/tasks/$taskId'
+      path: '/chat-video/tasks/$taskId'
+      fullPath: '/chat-video/tasks/$taskId'
+      preLoaderRoute: typeof ChatVideoTasksTaskIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing/$modelId/': {
       id: '/pricing/$modelId/'
       path: '/pricing/$modelId'
@@ -1342,6 +1362,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,
+  ChatVideoTasksTaskIdRoute: ChatVideoTasksTaskIdRoute,
   PricingModelIdIndexRoute: PricingModelIdIndexRoute,
 }
 export const routeTree = rootRouteImport
