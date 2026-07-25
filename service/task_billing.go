@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/constant"
+	"github.com/QuantumNous/the-one/logger"
+	"github.com/QuantumNous/the-one/model"
+	relaycommon "github.com/QuantumNous/the-one/relay/common"
+	"github.com/QuantumNous/the-one/relaykit/types"
+	"github.com/QuantumNous/the-one/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 

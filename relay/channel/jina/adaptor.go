@@ -6,13 +6,13 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/QuantumNous/new-api/relay/channel"
-	"github.com/QuantumNous/new-api/relay/channel/openai"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/relay/common_handler"
-	"github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/the-one/relay/channel"
+	"github.com/QuantumNous/the-one/relay/channel/openai"
+	relaycommon "github.com/QuantumNous/the-one/relay/common"
+	"github.com/QuantumNous/the-one/relay/common_handler"
+	"github.com/QuantumNous/the-one/relay/constant"
+	"github.com/QuantumNous/the-one/relaykit/dto"
+	"github.com/QuantumNous/the-one/relaykit/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -81,7 +81,7 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	return request, nil
 }
 
-func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.TheOneError) {
 	if info.RelayMode == constant.RelayModeRerank {
 		usage, err = common_handler.RerankHandler(c, info, resp)
 	} else if info.RelayMode == constant.RelayModeEmbeddings {

@@ -3,8 +3,8 @@ package common
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
-	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/the-one/relaykit/relayconvert/convmeta"
+	"github.com/QuantumNous/the-one/relaykit/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

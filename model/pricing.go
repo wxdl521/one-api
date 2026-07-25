@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/constant"
+	"github.com/QuantumNous/the-one/relaykit/dto"
+	"github.com/QuantumNous/the-one/relaykit/types"
+	"github.com/QuantumNous/the-one/setting/billing_setting"
+	"github.com/QuantumNous/the-one/setting/ratio_setting"
 )
 
 type Pricing struct {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/relaykit/dto"
-	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/the-one/relaykit/dto"
+	kitutil "github.com/QuantumNous/the-one/relaykit/relayconvert/kitutil"
 )
 
 const (

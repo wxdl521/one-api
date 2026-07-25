@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/console_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/setting/console_setting"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +23,11 @@ func MigrateRetiredFrontendOptions() error {
 	}
 
 	var migrationErrors []error
+	if err := DB.Model(&Option{}).
+		Where("key = ? AND value IN ?", "SystemName", []string{"New API", "NewAPI"}).
+		Update("value", "The One").Error; err != nil {
+		migrationErrors = append(migrationErrors, fmt.Errorf("rename legacy system name: %w", err))
+	}
 	if err := normalizeRetiredThemeOption(); err != nil {
 		migrationErrors = append(migrationErrors, fmt.Errorf("normalize %s: %w", retiredThemeOptionKey, err))
 	}

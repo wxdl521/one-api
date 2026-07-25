@@ -8,8 +8,8 @@ const (
 	// AssetFormatVolcengine 官方内置出口：火山 Ark 直连（AK/SK HMAC 签名）。
 	// 仅此格式需内置——HMAC 签名无法用模板表达；其余协议（如火山兼容网关）请用自定义格式模板。
 	AssetFormatVolcengine = "volcengine"
-	// AssetFormatNewAPI 官方内置出口：对接另一台 new-api 的资产接口（路径式 Action + Bearer），用于套娃。
-	AssetFormatNewAPI = "newapi"
+	// AssetFormatTheOne 官方内置出口：对接另一台 the-one 的资产接口（路径式 Action + Bearer），用于套娃。
+	AssetFormatTheOne = "theone"
 )
 
 const (
@@ -69,11 +69,11 @@ type AssetCustomFormat struct {
 	Actions map[string]AssetActionTemplate `json:"actions,omitempty"`
 }
 
-// AssetOutbound 是一个出口（egress）：new-api 以何种格式、凭证、基址访问某个上游资产服务。
+// AssetOutbound 是一个出口（egress）：the-one 以何种格式、凭证、基址访问某个上游资产服务。
 type AssetOutbound struct {
 	Id          string `json:"id"`
 	Name        string `json:"name,omitempty"`
-	Format      string `json:"format"` // 内置: volcengine | newapi；或自定义格式 Id
+	Format      string `json:"format"` // 内置: volcengine | theone；或自定义格式 Id
 	BaseURL     string `json:"base_url,omitempty"`
 	Region      string `json:"region,omitempty"`
 	ProjectName string `json:"project_name,omitempty"`
@@ -152,7 +152,7 @@ func (o AssetOutbound) ResolvedBaseURL() string {
 // IsBuiltinAssetFormat 返回该格式是否为官方内置格式。
 func IsBuiltinAssetFormat(format string) bool {
 	switch format {
-	case "", AssetFormatVolcengine, AssetFormatNewAPI:
+	case "", AssetFormatVolcengine, AssetFormatTheOne:
 		return true
 	default:
 		return false
@@ -189,7 +189,7 @@ func (v *VolcAssetSettings) OutboundConfigured(o AssetOutbound) bool {
 	switch o.EffectiveFormat() {
 	case AssetFormatVolcengine:
 		return o.AccessKey != "" && o.SecretKey != ""
-	case AssetFormatNewAPI:
+	case AssetFormatTheOne:
 		return o.BaseURL != "" && o.AccessToken != ""
 	default:
 		if o.BaseURL == "" {

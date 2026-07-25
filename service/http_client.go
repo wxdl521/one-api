@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/logger"
+	"github.com/QuantumNous/the-one/setting/system_setting"
 
 	"golang.org/x/net/proxy"
 )

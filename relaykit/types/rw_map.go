@@ -3,7 +3,7 @@ package types
 import (
 	"sync"
 
-	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	kitutil "github.com/QuantumNous/the-one/relaykit/relayconvert/kitutil"
 )
 
 type RWMap[K comparable, V any] struct {

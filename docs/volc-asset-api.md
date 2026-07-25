@@ -1,6 +1,6 @@
 # 火山引擎资产 · API 调用文档
 
-本接口通过 new-api 网关提供素材资产的全生命周期管理。客户端只持有 new-api 令牌，由网关负责对上游火山 Ark / 兼容服务的签名、鉴权、用户隔离与转发。
+本接口通过 the-one 网关提供素材资产的全生命周期管理。客户端只持有 the-one 令牌，由网关负责对上游火山 Ark / 兼容服务的签名、鉴权、用户隔离与转发。
 
 > 管理员配置说明见 **火山引擎资产 · 配置说明**（`volc-asset-config.md`）。
 
@@ -11,7 +11,7 @@
 ### 接口域名
 
 ```HTTP
-https://<你的 new-api 域名>
+https://<你的 the-one 域名>
 ```
 
 ### 请求头
@@ -20,11 +20,11 @@ https://<你的 new-api 域名>
 
 | Header | 必填 | 说明 |
 | --- | --- | --- |
-| `Authorization` | 是 | `Bearer <new-api 令牌>`。即 new-api 控制台签发的 API 令牌（`sk-` 开头），**非上游火山密钥**。 |
+| `Authorization` | 是 | `Bearer <the-one 令牌>`。即 the-one 控制台签发的 API 令牌（`sk-` 开头），**非上游火山密钥**。 |
 | `Content-Type` | 是 | `application/json` |
 | `X-Asset-Outbound` | 否 | 多出口部署时用于选择出口，值为出口 ID。也可改用查询参数 `?outbound=<出口ID>`。不传则使用默认出口。 |
 
-> `X-Asset-Outbound` 是 new-api 的出口选择头（可由管理员自定义头名），不是火山官方参数；单出口部署可忽略。
+> `X-Asset-Outbound` 是 the-one 的出口选择头（可由管理员自定义头名），不是火山官方参数；单出口部署可忽略。
 
 ---
 
@@ -45,7 +45,7 @@ https://<你的 new-api 域名>
 | 素材组 | `UpdateAssetGroup` | **仅管理员** | 修改素材组 |
 | 素材组 | `DeleteAssetGroup` | **仅管理员** | 删除素材组 |
 
-**数据隔离**：接口按令牌所属用户标识身份，数据在用户维度严格隔离。每个用户在每个出口上拥有一个由系统自动开通的专属分组 `newapi-user-{用户ID}`；所有素材读写都被强制限定在该分组内，不同用户无法访问彼此的素材。普通调用方**只需使用 5 个素材接口**，分组由系统自动管理。
+**数据隔离**：接口按令牌所属用户标识身份，数据在用户维度严格隔离。每个用户在每个出口上拥有一个由系统自动开通的专属分组 `theone-user-{用户ID}`；所有素材读写都被强制限定在该分组内，不同用户无法访问彼此的素材。普通调用方**只需使用 5 个素材接口**，分组由系统自动管理。
 
 ---
 
@@ -71,7 +71,7 @@ POST {Base URL}/{ActionName}
 
 | Header | 必填 | 说明 |
 | --- | --- | --- |
-| `Authorization` | 是 | `Bearer <new-api 令牌>` |
+| `Authorization` | 是 | `Bearer <the-one 令牌>` |
 | `Content-Type` | 是 | 固定为 `application/json` |
 | `X-Asset-Outbound` | 否 | 选择出口；不传用默认出口 |
 
@@ -87,7 +87,7 @@ POST {Base URL}/{ActionName}
 
 ### 成功响应（HTTP 200）
 
-new-api 会**剥离上游信封**（如火山的 `ResponseMetadata`），直接返回结果对象本身。例如 `CreateAsset` 返回：
+the-one 会**剥离上游信封**（如火山的 `ResponseMetadata`），直接返回结果对象本身。例如 `CreateAsset` 返回：
 
 ```json
 {
@@ -101,7 +101,7 @@ new-api 会**剥离上游信封**（如火山的 `ResponseMetadata`），直接�
 
 ### 错误响应
 
-new-api 网关层的错误统一为 `{"error": ...}` 形态：
+the-one 网关层的错误统一为 `{"error": ...}` 形态：
 
 | 场景 | HTTP | 响应体 |
 | --- | --- | --- |
@@ -548,7 +548,7 @@ curl -X POST 'https://{host}/doubao/open/DeleteAssetGroup' \
 
 ## 7. 错误码参考
 
-new-api 网关层错误（`{"error": "..."}`）：
+the-one 网关层错误（`{"error": "..."}`）：
 
 | HTTP | 错误信息 | 说明 |
 | --- | --- | --- |
@@ -603,7 +603,7 @@ new-api 网关层错误（`{"error": "..."}`）：
 import time
 import requests
 
-HOST = "https://your-newapi-host"
+HOST = "https://your-theone-host"
 TOKEN = "sk-YOUR_TOKEN"
 HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 # 多出口部署时可加上： HEADERS["X-Asset-Outbound"] = "your-outbound-id"

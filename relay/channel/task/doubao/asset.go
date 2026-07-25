@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/constant"
+	"github.com/QuantumNous/the-one/logger"
+	"github.com/QuantumNous/the-one/model"
+	"github.com/QuantumNous/the-one/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -349,7 +349,7 @@ func ensureUserAssetGroup(c *gin.Context, ob system_setting.AssetOutbound, userI
 
 // provisionUserAssetGroup 幂等地为用户在该出口开通专属分组并返回其 Id。
 func provisionUserAssetGroup(c *gin.Context, ob system_setting.AssetOutbound, userId int) (string, error) {
-	groupName := fmt.Sprintf("newapi-user-%d", userId)
+	groupName := fmt.Sprintf("theone-user-%d", userId)
 
 	// 已存在则直接复用（映射丢失或重复开通时幂等）。
 	if id, err := findAssetGroupIdByName(c.Request.Context(), ob, groupName); err == nil && id != "" {
@@ -358,7 +358,7 @@ func provisionUserAssetGroup(c *gin.Context, ob system_setting.AssetOutbound, us
 
 	createBody, err := common.Marshal(CreateAssetGroupRequest{
 		Name:        groupName,
-		Description: fmt.Sprintf("Auto-managed personal asset group for new-api user %d", userId),
+		Description: fmt.Sprintf("Auto-managed personal asset group for the-one user %d", userId),
 		GroupType:   ob.GetGroupType(),
 		ProjectName: ob.ProjectName,
 	})

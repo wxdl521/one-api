@@ -3,9 +3,9 @@ package service
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/the-one/model"
+	"github.com/QuantumNous/the-one/setting"
+	"github.com/QuantumNous/the-one/setting/ratio_setting"
 )
 
 func GetUserUsableGroups(userGroup string) map[string]string {

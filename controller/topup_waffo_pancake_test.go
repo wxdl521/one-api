@@ -3,9 +3,9 @@ package controller
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/setting"
+	"github.com/QuantumNous/the-one/setting/operation_setting"
 	"github.com/stretchr/testify/require"
 )
 

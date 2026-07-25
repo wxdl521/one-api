@@ -5468,18 +5468,18 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT or PAT",
-        "description": "面板短期 JWT 或 User.AccessToken PAT；不再要求 New-Api-User"
+        "description": "面板短期 JWT 或 User.AccessToken PAT；不再要求 The-One-User"
       },
-      "NewApiUser1": {
+      "TheOneUser1": {
         "type": "apiKey",
         "in": "header",
-        "name": "New-Api-User",
+        "name": "The-One-User",
         "description": "已废弃且不再参与鉴权；PAT 客户端可以移除此请求头"
       },
       "RefreshCookie": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "new_api_refresh",
+        "name": "the_one_refresh",
         "description": "仅 refresh/logout 使用的 HttpOnly、SameSite=Strict Cookie"
       },
       "SecurityProof": {

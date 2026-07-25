@@ -3,12 +3,12 @@ package model
 import (
 	"errors"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/the-one/common"
 
 	"gorm.io/gorm"
 )
 
-// VolcAssetUserGroup 维护「new-api 用户 → 各出口上的资产分组」映射，用于资产接口的用户隔离。
+// VolcAssetUserGroup 维护「the-one 用户 → 各出口上的资产分组」映射，用于资产接口的用户隔离。
 // 每个用户在每个出口(outbound)上拥有一个由系统自动开通的专属分组；所有绑定以 JSON 存于 Groups 列，
 // 键为出口 Id。采用单行 + JSON 列而非复合唯一索引，避免跨数据库的索引迁移问题（仅需 ADD COLUMN）。
 type VolcAssetUserGroup struct {

@@ -42,8 +42,8 @@ func TestVolcAssetSettingsIsConfigured(t *testing.T) {
 			false,
 		},
 		{
-			"newapi complete",
-			VolcAssetSettings{Outbounds: []AssetOutbound{{Format: AssetFormatNewAPI, BaseURL: "https://x", AccessToken: "t"}}},
+			"theone complete",
+			VolcAssetSettings{Outbounds: []AssetOutbound{{Format: AssetFormatTheOne, BaseURL: "https://x", AccessToken: "t"}}},
 			true,
 		},
 		{
@@ -77,7 +77,7 @@ func TestAssetOutboundEffectiveDefaults(t *testing.T) {
 	assert.Equal(t, "AIGC", ob.GetGroupType())
 	assert.Equal(t, "https://ark.cn-beijing.volcengineapi.com", ob.ResolvedBaseURL())
 
-	tok := AssetOutbound{Format: AssetFormatNewAPI, BaseURL: "https://gw/api"}
+	tok := AssetOutbound{Format: AssetFormatTheOne, BaseURL: "https://gw/api"}
 	assert.Equal(t, "https://gw/api", tok.ResolvedBaseURL())
 }
 
@@ -90,7 +90,7 @@ func TestOutboundConfigured(t *testing.T) {
 	}{
 		{"volcengine ok", AssetOutbound{Format: AssetFormatVolcengine, AccessKey: "ak", SecretKey: "sk"}, true},
 		{"volcengine missing sk", AssetOutbound{Format: AssetFormatVolcengine, AccessKey: "ak"}, false},
-		{"newapi ok", AssetOutbound{Format: AssetFormatNewAPI, BaseURL: "https://x", AccessToken: "t"}, true},
+		{"theone ok", AssetOutbound{Format: AssetFormatTheOne, BaseURL: "https://x", AccessToken: "t"}, true},
 		{"custom ok", AssetOutbound{Format: "myfmt", BaseURL: "https://x"}, true},
 		{"custom missing base", AssetOutbound{Format: "myfmt"}, false},
 		{"custom unknown format", AssetOutbound{Format: "nope", BaseURL: "https://x"}, false},
@@ -106,7 +106,7 @@ func TestResolveOutboundCandidates(t *testing.T) {
 	base := func() VolcAssetSettings {
 		return VolcAssetSettings{Outbounds: []AssetOutbound{
 			{Id: "a", Format: AssetFormatVolcengine, AccessKey: "ak", SecretKey: "sk"},
-			{Id: "b", Format: AssetFormatNewAPI, BaseURL: "https://b", AccessToken: "t"},
+			{Id: "b", Format: AssetFormatTheOne, BaseURL: "https://b", AccessToken: "t"},
 			{Id: "c", Format: AssetFormatVolcengine}, // 未配置（缺 sk），应被过滤
 		}}
 	}
@@ -146,7 +146,7 @@ func TestRedactedClearsOutboundSecrets(t *testing.T) {
 	cfg := VolcAssetSettings{
 		Outbounds: []AssetOutbound{
 			{Id: "a", Format: AssetFormatVolcengine, AccessKey: "ak", SecretKey: "sk-a"},
-			{Id: "b", Format: AssetFormatNewAPI, AccessToken: "tok-b"},
+			{Id: "b", Format: AssetFormatTheOne, AccessToken: "tok-b"},
 		},
 	}
 	got := cfg.Redacted()

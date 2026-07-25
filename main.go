@@ -15,22 +15,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/controller"
-	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/oauth"
-	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
-	"github.com/QuantumNous/new-api/relay"
-	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/router"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
-	_ "github.com/QuantumNous/new-api/setting/performance_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/constant"
+	"github.com/QuantumNous/the-one/controller"
+	"github.com/QuantumNous/the-one/i18n"
+	"github.com/QuantumNous/the-one/logger"
+	"github.com/QuantumNous/the-one/middleware"
+	"github.com/QuantumNous/the-one/model"
+	"github.com/QuantumNous/the-one/oauth"
+	perfmetrics "github.com/QuantumNous/the-one/pkg/perf_metrics"
+	"github.com/QuantumNous/the-one/relay"
+	kitutil "github.com/QuantumNous/the-one/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/the-one/router"
+	"github.com/QuantumNous/the-one/service"
+	"github.com/QuantumNous/the-one/service/authz"
+	_ "github.com/QuantumNous/the-one/setting/performance_setting"
+	"github.com/QuantumNous/the-one/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -58,7 +58,7 @@ func main() {
 		return
 	}
 
-	common.SysLog("New API " + common.Version + " started")
+	common.SysLog("The One " + common.Version + " started")
 	if os.Getenv("GIN_MODE") != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -180,8 +180,8 @@ func main() {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
-				"type":    "new_api_panic",
+				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/the-one", err),
+				"type":    "the_one_panic",
 			},
 		})
 	}))

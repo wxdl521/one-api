@@ -1,6 +1,6 @@
 package operation_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/QuantumNous/the-one/setting/config"
 
 // CheckinSetting 签到功能配置
 type CheckinSetting struct {

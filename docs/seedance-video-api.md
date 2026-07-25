@@ -1,6 +1,6 @@
 # Seedance 2.0 视频生成 · API 调用文档
 
-本文说明如何通过 new-api 调用火山引擎 **Seedance 2.0** 系列视频生成模型，覆盖全部端点、参数、四种生成场景（文生 / 图生首帧 / 图生首尾帧 / 多模态参考生视频），并重点说明**如何把「素材资产」用进视频请求**。
+本文说明如何通过 the-one 调用火山引擎 **Seedance 2.0** 系列视频生成模型，覆盖全部端点、参数、四种生成场景（文生 / 图生首帧 / 图生首尾帧 / 多模态参考生视频），并重点说明**如何把「素材资产」用进视频请求**。
 
 > 素材资产的获取见配套文档：**火山引擎资产 · API 调用文档**（`volc-asset-api.md`）与 **配置说明**（`volc-asset-config.md`）。
 
@@ -11,14 +11,14 @@
 ### 接口域名
 
 ```HTTP
-https://<你的 new-api 域名>
+https://<你的 the-one 域名>
 ```
 
 ### 请求头
 
 | Header | 必填 | 说明 |
 | --- | --- | --- |
-| `Authorization` | 是 | `Bearer <new-api 令牌>`（`sk-` 开头的 API 令牌，**非上游火山密钥**） |
+| `Authorization` | 是 | `Bearer <the-one 令牌>`（`sk-` 开头的 API 令牌，**非上游火山密钥**） |
 | `Content-Type` | 是 | `application/json` |
 
 ### 支持的模型
@@ -29,7 +29,7 @@ https://<你的 new-api 域名>
 | `doubao-seedance-2-0-fast-260128` | Seedance 2.0 快速版（更快、成本更低） |
 | `doubao-seedance-1-5-pro-251215`、`doubao-seedance-1-0-pro-250528`、`doubao-seedance-1-0-lite-t2v`、`doubao-seedance-1-0-lite-i2v` | 兼容的 1.x 系列（同一套接口） |
 
-> **前置条件**：管理员需在 new-api 中配置一条支持上述模型的渠道（渠道类型 `DoubaoVideo` 或 `VolcEngine`，填入火山 Ark 的 API Key），且调用令牌所在分组有该模型权限。
+> **前置条件**：管理员需在 the-one 中配置一条支持上述模型的渠道（渠道类型 `DoubaoVideo` 或 `VolcEngine`，填入火山 Ark 的 API Key），且调用令牌所在分组有该模型权限。
 
 ---
 
@@ -99,7 +99,7 @@ POST https://{host}/v1/video/generations
 
 ### 成功响应（HTTP 200）
 
-提交成功返回一个任务对象（`status` 初始为 `queued`）。注意 `id` 是 **new-api 的任务 ID**，后续查询/下载都用它：
+提交成功返回一个任务对象（`status` 初始为 `queued`）。注意 `id` 是 **the-one 的任务 ID**，后续查询/下载都用它：
 
 ```json
 {
@@ -170,7 +170,7 @@ curl 'https://{host}/v1/video/generations/video-xxxxxxxxxxxx' \
 
 ## 5. 下载视频
 
-成功后既可直接使用 `metadata.url`，也可让 new-api 代理下载字节流（自动处理上游鉴权）：
+成功后既可直接使用 `metadata.url`，也可让 the-one 代理下载字节流（自动处理上游鉴权）：
 
 ```bash
 curl -L 'https://{host}/v1/videos/video-xxxxxxxxxxxx/content' \
@@ -314,7 +314,7 @@ curl -X POST 'https://{host}/v1/video/generations' \
 import time
 import requests
 
-HOST = "https://your-newapi-host"
+HOST = "https://your-theone-host"
 TOKEN = "sk-YOUR_TOKEN"
 HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
@@ -403,7 +403,7 @@ token ≈ (输入视频时长 + 输出视频时长) × 输出宽 × 输出高 ×
 ```
 
 - 实际扣费在任务**成功后**依据上游返回的 `usage` 计算。
-- new-api 会按「输出分辨率档（480p/720p 基准、1080p、4K）」与「输入是否包含视频」对基准价做倍率调整：
+- the-one 会按「输出分辨率档（480p/720p 基准、1080p、4K）」与「输入是否包含视频」对基准价做倍率调整：
   - 含视频输入通常比纯图/文输入更便宜；
   - 分辨率越高，token 与成本越高。
 - 失败任务不计费。

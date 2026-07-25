@@ -3,7 +3,7 @@ package doubao
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/the-one/setting/system_setting"
 
 	"github.com/tidwall/gjson"
 	"github.com/stretchr/testify/assert"

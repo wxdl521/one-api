@@ -1,4 +1,4 @@
-module github.com/QuantumNous/new-api
+module github.com/QuantumNous/the-one
 
 // +heroku goVersion go1.18
 go 1.25.1
@@ -163,6 +163,6 @@ require (
 	modernc.org/sqlite v1.40.1 // indirect
 )
 
-require github.com/QuantumNous/new-api/relaykit v0.0.0
+require github.com/QuantumNous/the-one/relaykit v0.0.0
 
-replace github.com/QuantumNous/new-api/relaykit => ./relaykit
+replace github.com/QuantumNous/the-one/relaykit => ./relaykit

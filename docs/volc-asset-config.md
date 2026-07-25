@@ -1,6 +1,6 @@
 # 火山引擎资产 · 配置说明
 
-本文面向 **new-api 管理员**，说明如何在系统设置中配置「火山引擎资产」网关。配置完成后，客户端只需持有 new-api 令牌，即可通过统一的资产接口（`/doubao/open/*`）管理素材，由 new-api 负责签名、鉴权、用户隔离、计费与转发。
+本文面向 **the-one 管理员**，说明如何在系统设置中配置「火山引擎资产」网关。配置完成后，客户端只需持有 the-one 令牌，即可通过统一的资产接口（`/doubao/open/*`）管理素材，由 the-one 负责签名、鉴权、用户隔离、计费与转发。
 
 > 客户端调用细节请参见配套文档：**火山引擎资产 · API 调用文档**（`volc-asset-api.md`）。
 
@@ -13,10 +13,10 @@
 整体链路：
 
 ```
-客户端 ──(Bearer new-api 令牌)──▶ new-api（火山引擎资产网关）──(出口: 签名/凭证)──▶ 上游火山 Ark / 兼容网关
+客户端 ──(Bearer the-one 令牌)──▶ the-one（火山引擎资产网关）──(出口: 签名/凭证)──▶ 上游火山 Ark / 兼容网关
 ```
 
-- **入口固定**：客户端始终调用同一套「规范化（火山原生风格）」资产 API，使用 new-api 令牌鉴权，**不接触任何上游凭证**。
+- **入口固定**：客户端始终调用同一套「规范化（火山原生风格）」资产 API，使用 the-one 令牌鉴权，**不接触任何上游凭证**。
 - **出口可配置**：网关把每个请求转发到一个可配置的上游目标（出口 / outbound），出口决定了用何种格式、凭证、基址访问上游。
 - **按用户隔离**：每个用户在每个出口上都会被自动分配一个专属素材组，用户之间无法互相访问素材。
 
@@ -26,11 +26,11 @@
 
 | 概念 | 说明 |
 | --- | --- |
-| **入口（entry）** | 固定的规范化资产 API（火山原生形态）。客户端只认这一套接口与 new-api 令牌。 |
+| **入口（entry）** | 固定的规范化资产 API（火山原生形态）。客户端只认这一套接口与 the-one 令牌。 |
 | **出口（outbound）** | 一个上游目标，包含「格式 + 凭证 + 基址」。可配置多个，按请求选择其一。 |
-| **格式（format）** | 出口与上游的对接协议。内置 `volcengine`（火山直连 AK/SK）与 `newapi`（套娃另一台 new-api）；其余协议用「自定义格式」模板表达。 |
+| **格式（format）** | 出口与上游的对接协议。内置 `volcengine`（火山直连 AK/SK）与 `theone`（套娃另一台 the-one）；其余协议用「自定义格式」模板表达。 |
 | **自定义格式（custom format）** | 一份可复用的适配器模板，用 URL / 方法 / 鉴权 / 字段映射描述任意上游协议，被出口以 ID 引用。 |
-| **用户隔离分组** | 每个用户在每个出口上自动开通的专属分组 `newapi-user-{用户ID}`，其全部素材读写都被强制限定在该分组内。 |
+| **用户隔离分组** | 每个用户在每个出口上自动开通的专属分组 `theone-user-{用户ID}`，其全部素材读写都被强制限定在该分组内。 |
 
 ---
 
@@ -56,11 +56,11 @@
 | --- | --- | --- | --- |
 | `id` | Outbound ID | 出口稳定标识，客户端用它选择出口。留空视为 `default`。 | 全部 |
 | `name` | Name | 备注名，仅用于展示。 | 全部 |
-| `format` | Outbound format | 出口格式：`volcengine` / `newapi` / 某个自定义格式 ID。 | 全部 |
-| `base_url` | Base URL | 上游基址。`volcengine` 无需填写（按区域自动拼接）。 | `newapi` / 自定义 |
+| `format` | Outbound format | 出口格式：`volcengine` / `theone` / 某个自定义格式 ID。 | 全部 |
+| `base_url` | Base URL | 上游基址。`volcengine` 无需填写（按区域自动拼接）。 | `theone` / 自定义 |
 | `access_key` | Access Key | 火山 Access Key ID。 | `volcengine` / 自定义 |
 | `secret_key` | Secret Key | 火山 Secret Access Key。**写入型字段**，留空保留原值。 | `volcengine` / 自定义 |
-| `access_token` | Access Token | Bearer / 网关令牌。**写入型字段**，留空保留原值。 | `newapi` / 自定义 |
+| `access_token` | Access Token | Bearer / 网关令牌。**写入型字段**，留空保留原值。 | `theone` / 自定义 |
 | `region` | Region | 区域，缺省 `cn-beijing`。 | `volcengine` / 自定义 |
 | `project_name` | Project Name | 火山项目名，可留空使用默认值。 | 全部 |
 | `group_type` | Group Type | 分组类型，缺省 `AIGC`。 | 全部 |
@@ -74,10 +74,10 @@
 - 基址自动拼接为 `https://ark.{region}.volcengineapi.com`，**无需填写 Base URL**。
 - 必填：`Access Key`、`Secret Key`。可选：`Region`（默认 `cn-beijing`）、`Project Name`、`Group Type`（默认 `AIGC`）。
 
-**② new-api（套娃）—— `newapi`**
+**② the-one（套娃）—— `theone`**
 
-- 对接**另一台 new-api** 的资产接口，使用路径式 Action + Bearer 鉴权。
-- 必填：`Base URL`（另一台 new-api 的资产接口基址）、`Access Token`（对方的 new-api 令牌）。
+- 对接**另一台 the-one** 的资产接口，使用路径式 Action + Bearer 鉴权。
+- 必填：`Base URL`（另一台 the-one 的资产接口基址）、`Access Token`（对方的 the-one 令牌）。
 
 **③ 自定义格式 —— 引用某个自定义格式 ID**
 
@@ -110,13 +110,13 @@
 
 开启 `failover` 时，主候选之后会追加其余已启用出口用于回退；未开启时只用主候选。仅「配置完整（可用）」的出口才会进入候选。
 
-> 关于 `X-Asset-Outbound`：这是 **new-api 自定义的出口选择头，不是火山引擎官方参数**，仅在 new-api 本端被消费、不会转发给上游。单出口部署可忽略此项；多出口部署才用得上。
+> 关于 `X-Asset-Outbound`：这是 **the-one 自定义的出口选择头，不是火山引擎官方参数**，仅在 the-one 本端被消费、不会转发给上游。单出口部署可忽略此项；多出口部署才用得上。
 
 ---
 
 ## 6. 自定义出口格式（Custom formats）
 
-> 可选的高级功能，大多数场景用不到。内置的 `volcengine` 与 `newapi` 只需填凭证。仅当上游协议与内置格式都不匹配时才需要自定义格式。
+> 可选的高级功能，大多数场景用不到。内置的 `volcengine` 与 `theone` 只需填凭证。仅当上游协议与内置格式都不匹配时才需要自定义格式。
 
 在「自定义出口格式」中点击「添加格式」（或「网关预设」一键生成火山兼容网关模板）。字段如下：
 
@@ -231,7 +231,7 @@
 
 ## 9. 用户隔离与分组
 
-- 每个用户**首次**调用资产接口时，网关会在所选出口上自动开通专属分组 `newapi-user-{用户ID}`，并把「用户 ↔ 出口 ↔ 分组」绑定持久化（同一用户在不同出口拥有各自独立分组）。
+- 每个用户**首次**调用资产接口时，网关会在所选出口上自动开通专属分组 `theone-user-{用户ID}`，并把「用户 ↔ 出口 ↔ 分组」绑定持久化（同一用户在不同出口拥有各自独立分组）。
 - 面向用户的接口会**强制覆盖** `GroupId` 与 `ProjectName`，客户端传入的分组字段无法越权。
 - `GetAsset` / `UpdateAsset` / `DeleteAsset` 会校验资产是否归属调用者分组，不归属则返回 `404`。
 - **分组管理接口（`CreateAssetGroup` / `ListAssetGroups` / `GetAssetGroup` / `UpdateAssetGroup` / `DeleteAssetGroup`）仅管理员可调用**：普通用户的分组由系统自动管理，不暴露分组 CRUD，以维持「一用户一分组」的隔离不变量。
@@ -305,8 +305,8 @@
 
 ## 11. 配置完成后
 
-- 客户端基址：`POST https://<你的 new-api 域名>/doubao/open/{Action}`
-- 鉴权：`Authorization: Bearer <new-api 令牌>`
+- 客户端基址：`POST https://<你的 the-one 域名>/doubao/open/{Action}`
+- 鉴权：`Authorization: Bearer <the-one 令牌>`
 - 多出口选择（可选）：请求头 `X-Asset-Outbound: <出口ID>` 或查询参数 `?outbound=<出口ID>`
 
 具体接口、请求/响应字段、错误码与代码示例，见 **火山引擎资产 · API 调用文档**（`volc-asset-api.md`）。

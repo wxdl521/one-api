@@ -12,9 +12,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/service"
+	"github.com/QuantumNous/the-one/setting/system_setting"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -28,8 +28,8 @@ func callAssetAPI(ctx context.Context, ob system_setting.AssetOutbound, action s
 	switch ob.EffectiveFormat() {
 	case system_setting.AssetFormatVolcengine:
 		return callVolcengineFormat(ctx, ob, action, body)
-	case system_setting.AssetFormatNewAPI:
-		return callNewAPIFormat(ctx, ob, action, body)
+	case system_setting.AssetFormatTheOne:
+		return callTheOneFormat(ctx, ob, action, body)
 	default:
 		cf, ok := system_setting.VolcAssetConfig.CustomFormat(ob.EffectiveFormat())
 		if !ok {
@@ -115,9 +115,9 @@ func decodeVolcengineEnvelope(respBody []byte, status int) ([]byte, *assetAPIErr
 	return respBody, nil, status, nil
 }
 
-// callNewAPIFormat 对接另一台 new-api 的资产接口：路径式 Action + Bearer 鉴权（套娃）。
-// 下游 new-api 成功时直接返回规范化结果，失败时返回 {"error": ...}。
-func callNewAPIFormat(ctx context.Context, ob system_setting.AssetOutbound, action string, body []byte) ([]byte, *assetAPIError, int, error) {
+// callTheOneFormat 对接另一台 the-one 的资产接口：路径式 Action + Bearer 鉴权（套娃）。
+// 下游 the-one 成功时直接返回规范化结果，失败时返回 {"error": ...}。
+func callTheOneFormat(ctx context.Context, ob system_setting.AssetOutbound, action string, body []byte) ([]byte, *assetAPIError, int, error) {
 	if ob.BaseURL == "" || ob.AccessToken == "" {
 		return nil, nil, 0, errors.New("asset outbound base_url or access_token is not configured")
 	}

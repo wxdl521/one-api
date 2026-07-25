@@ -4,10 +4,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
-	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
+	"github.com/QuantumNous/the-one/relaykit/dto"
+	"github.com/QuantumNous/the-one/relaykit/relayconvert/convmeta"
+	kitutil "github.com/QuantumNous/the-one/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/the-one/relaykit/relayconvert/reasoning"
 )
 
 var SupportedMimeTypes = map[string]bool{

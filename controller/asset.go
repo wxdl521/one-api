@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/QuantumNous/new-api/relay/channel/task/doubao"
+	"github.com/QuantumNous/the-one/relay/channel/task/doubao"
 	"github.com/gin-gonic/gin"
 )
 

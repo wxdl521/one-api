@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/logger"
+	"github.com/QuantumNous/the-one/relaykit/dto"
 )
 
 type AwsClaudeRequest struct {

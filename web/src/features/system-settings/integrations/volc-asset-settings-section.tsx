@@ -72,8 +72,8 @@ import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
-// 内置出口格式：仅火山直连(AK/SK HMAC 签名)与套娃 new-api 需内置；其余协议用自定义格式模板。
-const BUILTIN_FORMATS = ['volcengine', 'newapi'] as const
+// 内置出口格式：仅火山直连(AK/SK HMAC 签名)与套娃 the-one 需内置；其余协议用自定义格式模板。
+const BUILTIN_FORMATS = ['volcengine', 'theone'] as const
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
 
 const fieldMapSchema = z.object({ from: z.string(), to: z.string() })
@@ -171,7 +171,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Outbounds & selection',
-    body: 'An outbound is one upstream target with its own format and credentials. Pick a built-in format (Volcengine direct AK/SK, or another new-api for nesting) or a custom format. Each request uses exactly one outbound: clients select it with the selector header (default X-Asset-Outbound) or an outbound query parameter carrying the outbound ID; otherwise the default outbound is used. With failover enabled, the gateway falls back to other configured outbounds when the chosen one is unavailable.',
+    body: 'An outbound is one upstream target with its own format and credentials. Pick a built-in format (Volcengine direct AK/SK, or another the-one for nesting) or a custom format. Each request uses exactly one outbound: clients select it with the selector header (default X-Asset-Outbound) or an outbound query parameter carrying the outbound ID; otherwise the default outbound is used. With failover enabled, the gateway falls back to other configured outbounds when the chosen one is unavailable.',
   },
   {
     title: 'User isolation',
@@ -673,7 +673,7 @@ function OutboundGroup({
     format as (typeof BUILTIN_FORMATS)[number]
   )
   const showAkSk = format === 'volcengine' || isCustom
-  const showToken = format === 'newapi' || isCustom
+  const showToken = format === 'theone' || isCustom
   const showBaseUrl = format !== 'volcengine'
   const showRegion = format === 'volcengine' || isCustom
 
@@ -732,8 +732,8 @@ function OutboundGroup({
                       <SelectItem value='volcengine'>
                         {t('Volcengine Direct (AK/SK)')}
                       </SelectItem>
-                      <SelectItem value='newapi'>
-                        {t('new-api (nested)')}
+                      <SelectItem value='theone'>
+                        {t('the-one (nested)')}
                       </SelectItem>
                       {customFormatIds.map((cid) => (
                         <SelectItem key={cid} value={cid}>
@@ -1527,7 +1527,7 @@ export function VolcAssetSettingsSection({
           <Alert>
             <AlertDescription>
               {t(
-                'Optional and advanced — most setups do not need this. The built-in formats are Volcengine direct (AK/SK) and nested new-api; for those you only fill in credentials. A custom format is a do-it-yourself adapter for any other upstream: describe its URL, method, auth, headers and the JSON field mapping for requests and responses. Use the Gateway preset for a ready-made Volcengine-compatible gateway. Saved formats appear in the Outbound format dropdown above.'
+                'Optional and advanced — most setups do not need this. The built-in formats are Volcengine direct (AK/SK) and nested the-one; for those you only fill in credentials. A custom format is a do-it-yourself adapter for any other upstream: describe its URL, method, auth, headers and the JSON field mapping for requests and responses. Use the Gateway preset for a ready-made Volcengine-compatible gateway. Saved formats appear in the Outbound format dropdown above.'
               )}
             </AlertDescription>
           </Alert>

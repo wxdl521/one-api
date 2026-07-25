@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/the-one/model"
 	"gorm.io/gorm"
 )
 

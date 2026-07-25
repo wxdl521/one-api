@@ -1,0 +1,18 @@
+# File path: /etc/systemd/system/the-one.service
+# sudo systemctl daemon-reload
+# sudo systemctl start the-one
+# sudo systemctl enable the-one
+# sudo systemctl status the-one
+[Unit]
+Description=The One Service
+After=network.target
+
+[Service]
+User=ubuntu  # 注意修改用户名
+WorkingDirectory=/path/to/the-one  # 注意修改路径
+ExecStart=/path/to/the-one/the-one --port 3000 --log-dir /path/to/the-one/logs  # 注意修改路径和端口号
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
