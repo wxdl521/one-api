@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -83,10 +84,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	adc := &vertexcore.Credentials{}
-	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
-		return "", fmt.Errorf("failed to decode credentials: %w", err)
-	}
 	modelName := info.UpstreamModelName
 	if modelName == "" {
 		modelName = "veo-3.0-generate-001"
@@ -96,6 +93,13 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	if strings.TrimSpace(region) == "" {
 		region = "global"
 	}
+	if info.ChannelOtherSettings.VertexKeyType == dto.VertexKeyTypeAPIKey {
+		return vertexAPIKeyURL(a.baseURL, "", region, modelName, "predictLongRunning", a.apiKey), nil
+	}
+	adc := &vertexcore.Credentials{}
+	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
+		return "", fmt.Errorf("failed to decode credentials: %w", err)
+	}
 	return vertexcore.BuildGoogleModelURL(a.baseURL, vertexcore.DefaultAPIVersion, adc.ProjectID, region, modelName, "predictLongRunning"), nil
 }
 
@@ -104,21 +108,23 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	adc := &vertexcore.Credentials{}
-	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
-		return fmt.Errorf("failed to decode credentials: %w", err)
-	}
+	if info == nil || info.ChannelOtherSettings.VertexKeyType != dto.VertexKeyTypeAPIKey {
+		adc := &vertexcore.Credentials{}
+		if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
+			return fmt.Errorf("failed to decode credentials: %w", err)
+		}
 
-	proxy := ""
-	if info != nil {
-		proxy = info.ChannelSetting.Proxy
+		proxy := ""
+		if info != nil {
+			proxy = info.ChannelSetting.Proxy
+		}
+		token, err := vertexcore.AcquireAccessToken(*adc, proxy)
+		if err != nil {
+			return fmt.Errorf("failed to acquire access token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("x-goog-user-project", adc.ProjectID)
 	}
-	token, err := vertexcore.AcquireAccessToken(*adc, proxy)
-	if err != nil {
-		return fmt.Errorf("failed to acquire access token: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("x-goog-user-project", adc.ProjectID)
 	return nil
 }
 
@@ -263,13 +269,30 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	if err != nil {
 		return nil, err
 	}
-	adc := &vertexcore.Credentials{}
-	if err := common.Unmarshal([]byte(key), adc); err != nil {
-		return nil, fmt.Errorf("failed to decode credentials: %w", err)
-	}
-	token, err := vertexcore.AcquireAccessToken(*adc, proxy)
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire access token: %w", err)
+	if !strings.HasPrefix(strings.TrimSpace(key), "{") {
+		url = vertexAPIKeyURL(baseUrl, extractProjectFromOperationName(upstreamName), extractRegionFromOperationName(upstreamName), extractModelFromOperationName(upstreamName), "fetchPredictOperation", key)
+	} else {
+		adc := &vertexcore.Credentials{}
+		if err := common.Unmarshal([]byte(key), adc); err != nil {
+			return nil, fmt.Errorf("failed to decode credentials: %w", err)
+		}
+		token, err := vertexcore.AcquireAccessToken(*adc, proxy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to acquire access token: %w", err)
+		}
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("x-goog-user-project", adc.ProjectID)
+		client, err := service.GetHttpClientWithProxy(proxy)
+		if err != nil {
+			return nil, fmt.Errorf("new proxy http client failed: %w", err)
+		}
+		return client.Do(req)
 	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
@@ -277,13 +300,15 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("x-goog-user-project", adc.ProjectID)
 	client, err := service.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
 	return client.Do(req)
+}
+
+func vertexAPIKeyURL(baseURL, projectID, region, modelName, action, apiKey string) string {
+	return vertexcore.BuildGoogleModelURL(baseURL, vertexcore.DefaultAPIVersion, projectID, region, modelName, action) + "?key=" + url.QueryEscape(apiKey)
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
