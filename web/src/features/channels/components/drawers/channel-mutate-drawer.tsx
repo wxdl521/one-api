@@ -2617,6 +2617,31 @@ export function ChannelMutateDrawer({
                                     <FormMessage />
                                   </FormItem>
                                 )}
+                                {vertexKeyType === 'api_key' && (
+                                  <FormField
+                                    control={form.control}
+                                    name='vertex_project_id'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>
+                                          {t('GCP Project ID *')}
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            placeholder={t('e.g., my-gcp-project')}
+                                            {...field}
+                                          />
+                                        </FormControl>
+                                        <FormDescription>
+                                          {t(
+                                            'Required for Vertex AI API Key mode.'
+                                          )}
+                                        </FormDescription>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                )}
                                 <FormField
                                   control={form.control}
                                   name='other'

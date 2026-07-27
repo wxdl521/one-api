@@ -522,6 +522,12 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		}
 	}
 
+	if channel.Type == constant.ChannelTypeVertexAi &&
+		channel.GetOtherSettings().VertexKeyType == dto.VertexKeyTypeAPIKey &&
+		strings.TrimSpace(channel.GetOtherSettings().VertexProjectID) == "" {
+		return fmt.Errorf("Vertex AI API Key mode requires a GCP Project ID")
+	}
+
 	// Codex OAuth key validation (optional, only when JSON object is provided)
 	if channel.Type == constant.ChannelTypeCodex {
 		trimmedKey := strings.TrimSpace(channel.Key)

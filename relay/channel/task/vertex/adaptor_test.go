@@ -19,7 +19,8 @@ func TestTaskAdaptorBuildsVertexVeoURLWithAPIKey(t *testing.T) {
 		ApiVersion:        `{"default":"global"}`,
 		UpstreamModelName: "veo-3.1-fast-generate-preview",
 		ChannelOtherSettings: dto.ChannelOtherSettings{
-			VertexKeyType: dto.VertexKeyTypeAPIKey,
+			VertexKeyType:   dto.VertexKeyTypeAPIKey,
+			VertexProjectID: "test-project",
 		},
 	}}
 	adaptor.Init(info)
@@ -27,5 +28,5 @@ func TestTaskAdaptorBuildsVertexVeoURLWithAPIKey(t *testing.T) {
 	url, err := adaptor.BuildRequestURL(info)
 
 	require.NoError(t, err)
-	assert.Equal(t, "https://aiplatform.googleapis.com/v1/publishers/google/models/veo-3.1-fast-generate-preview:predictLongRunning?key=AIza-test-key", url)
+	assert.Equal(t, "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/publishers/google/models/veo-3.1-fast-generate-preview:predictLongRunning?key=AIza-test-key", url)
 }

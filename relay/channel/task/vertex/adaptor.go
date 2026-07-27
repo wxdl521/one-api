@@ -94,7 +94,7 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 		region = "global"
 	}
 	if info.ChannelOtherSettings.VertexKeyType == dto.VertexKeyTypeAPIKey {
-		return vertexAPIKeyURL(a.baseURL, "", region, modelName, "predictLongRunning", a.apiKey), nil
+		return vertexAPIKeyURL(a.baseURL, info.ChannelOtherSettings.VertexProjectID, region, modelName, "predictLongRunning", a.apiKey), nil
 	}
 	adc := &vertexcore.Credentials{}
 	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
