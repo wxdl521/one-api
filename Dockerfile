@@ -21,6 +21,7 @@ ADD go.mod go.sum ./
 # relaykit is a local submodule referenced via replace; its go.mod must be
 # present for go mod download to resolve the main module graph.
 ADD relaykit/go.mod ./relaykit/go.mod
+ADD third_party/maas_seedance_sdk_1.0.0_go/go.mod ./third_party/maas_seedance_sdk_1.0.0_go/go.mod
 RUN go mod download
 
 COPY . .
