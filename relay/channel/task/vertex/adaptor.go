@@ -93,14 +93,15 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	if strings.TrimSpace(region) == "" {
 		region = "global"
 	}
+	baseURL := vertexTaskBaseURL(a.baseURL, region)
 	if info.ChannelOtherSettings.VertexKeyType == dto.VertexKeyTypeAPIKey {
-		return vertexAPIKeyURL(a.baseURL, info.ChannelOtherSettings.VertexProjectID, region, modelName, "predictLongRunning", a.apiKey), nil
+		return vertexAPIKeyURL(baseURL, info.ChannelOtherSettings.VertexProjectID, region, modelName, "predictLongRunning", a.apiKey), nil
 	}
 	adc := &vertexcore.Credentials{}
 	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
 		return "", fmt.Errorf("failed to decode credentials: %w", err)
 	}
-	return vertexcore.BuildGoogleModelURL(a.baseURL, vertexcore.DefaultAPIVersion, adc.ProjectID, region, modelName, "predictLongRunning"), nil
+	return vertexcore.BuildGoogleModelURL(baseURL, vertexcore.DefaultAPIVersion, adc.ProjectID, region, modelName, "predictLongRunning"), nil
 }
 
 // BuildRequestHeader sets required headers.
@@ -249,6 +250,7 @@ func buildFetchOperationURL(baseURL, upstreamName string) (string, error) {
 	if strings.TrimSpace(project) == "" {
 		return "", fmt.Errorf("cannot extract project from operation name")
 	}
+	baseURL = vertexTaskBaseURL(baseURL, region)
 	return vertexcore.BuildGoogleModelURL(baseURL, vertexcore.DefaultAPIVersion, project, region, modelName, "fetchPredictOperation"), nil
 }
 
@@ -310,7 +312,16 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 }
 
 func vertexAPIKeyURL(baseURL, projectID, region, modelName, action, apiKey string) string {
+	baseURL = vertexTaskBaseURL(baseURL, region)
 	return vertexcore.BuildGoogleModelURL(baseURL, vertexcore.DefaultAPIVersion, projectID, region, modelName, action) + "?key=" + url.QueryEscape(apiKey)
+}
+
+func vertexTaskBaseURL(baseURL, region string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "https://aiplatform.googleapis.com" && strings.TrimSpace(region) != "" && region != "global" {
+		return "https://" + region + "-aiplatform.googleapis.com"
+	}
+	return baseURL
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {

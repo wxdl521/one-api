@@ -16,8 +16,8 @@ func TestTaskAdaptorBuildsVertexVeoURLWithAPIKey(t *testing.T) {
 		ChannelType:       constant.ChannelTypeVertexAi,
 		ChannelBaseUrl:    "https://aiplatform.googleapis.com",
 		ApiKey:            "AIza-test-key",
-		ApiVersion:        `{"default":"global"}`,
-		UpstreamModelName: "veo-3.1-fast-generate-preview",
+		ApiVersion:        `{"default":"us-central1"}`,
+		UpstreamModelName: "veo-3.1-fast-generate-001",
 		ChannelOtherSettings: dto.ChannelOtherSettings{
 			VertexKeyType:   dto.VertexKeyTypeAPIKey,
 			VertexProjectID: "test-project",
@@ -28,7 +28,7 @@ func TestTaskAdaptorBuildsVertexVeoURLWithAPIKey(t *testing.T) {
 	url, err := adaptor.BuildRequestURL(info)
 
 	require.NoError(t, err)
-	assert.Equal(t, "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/publishers/google/models/veo-3.1-fast-generate-preview:predictLongRunning?key=AIza-test-key", url)
+	assert.Equal(t, "https://us-central1-aiplatform.googleapis.com/v1/projects/test-project/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning?key=AIza-test-key", url)
 }
 
 func TestTaskAdaptorListsStableVeo31Models(t *testing.T) {
