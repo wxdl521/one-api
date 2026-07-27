@@ -1725,6 +1725,7 @@
     "Enter key, format: AccessKey|SecretAccessKey|Region": "Введите ключ, формат: AccessKey|SecretAccessKey|Region",
     "Enter key, one per line, format: AccessKey|SecretAccessKey|Region": "Введите ключ, по одному на строку, формат: AccessKey|SecretAccessKey|Region",
     "Enter model name": "Введите имя модели",
+    "Enter models that use a video-task-capable channel. Press Enter or comma to add each model.": "Введите модели, использующие канал с поддержкой видеозадач. Нажмите Enter или запятую, чтобы добавить каждую модель.",
     "Enter new key to update": "Введите новый ключ для обновления",
     "Enter new key to update, or leave empty to keep current key": "Введите новый ключ для обновления или оставьте пустым, чтобы сохранить текущий ключ",
     "Enter new tag name (leave empty to disband tag)": "Введите новое имя тега (оставьте пустым, чтобы удалить тег)",

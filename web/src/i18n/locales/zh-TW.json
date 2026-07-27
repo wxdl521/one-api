@@ -1725,6 +1725,7 @@
     "Enter key, format: AccessKey|SecretAccessKey|Region": "請輸入金鑰，格式：AccessKey|SecretAccessKey|Region",
     "Enter key, one per line, format: AccessKey|SecretAccessKey|Region": "請輸入金鑰（每行一個），格式：AccessKey|SecretAccessKey|Region",
     "Enter model name": "請輸入模型名稱",
+    "Enter models that use a video-task-capable channel. Press Enter or comma to add each model.": "輸入使用影片任務通道的模型。按 Enter 或逗號新增每個模型。",
     "Enter new key to update": "輸入新金鑰以更新",
     "Enter new key to update, or leave empty to keep current key": "輸入新金鑰以更新，或留空以保留目前金鑰",
     "Enter new tag name (leave empty to disband tag)": "輸入新標籤名稱（留空以解散標籤）",

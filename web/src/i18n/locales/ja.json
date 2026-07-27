@@ -1725,6 +1725,7 @@
     "Enter key, format: AccessKey|SecretAccessKey|Region": "キーを入力してください、形式: AccessKey | SecretAccessKey | Region",
     "Enter key, one per line, format: AccessKey|SecretAccessKey|Region": "キーを入力してください。1行に1つ、形式: AccessKey | SecretAccessKey | Region",
     "Enter model name": "モデル名を入力",
+    "Enter models that use a video-task-capable channel. Press Enter or comma to add each model.": "動画タスク対応チャネルを使用するモデルを入力してください。Enter またはカンマで各モデルを追加します。",
     "Enter new key to update": "更新する新しいキーを入力",
     "Enter new key to update, or leave empty to keep current key": "更新する新しいキーを入力するか、空欄にして現在のキーを保持",
     "Enter new tag name (leave empty to disband tag)": "新しいタグ名を入力してください（タグを解散するには空欄にしてください）",

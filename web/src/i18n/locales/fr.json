@@ -1725,6 +1725,7 @@
     "Enter key, format: AccessKey|SecretAccessKey|Region": "Entrez la clé, format : AccessKey|SecretAccessKey|Region",
     "Enter key, one per line, format: AccessKey|SecretAccessKey|Region": "Entrez la clé, une par ligne, format : AccessKey|SecretAccessKey|Region",
     "Enter model name": "Entrez le nom du modèle",
+    "Enter models that use a video-task-capable channel. Press Enter or comma to add each model.": "Saisissez les modèles utilisant un canal compatible avec les tâches vidéo. Appuyez sur Entrée ou une virgule pour ajouter chaque modèle.",
     "Enter new key to update": "Saisir la nouvelle clé à mettre à jour",
     "Enter new key to update, or leave empty to keep current key": "Saisir la nouvelle clé à mettre à jour, ou laisser vide pour conserver la clé actuelle",
     "Enter new tag name (leave empty to disband tag)": "Saisir le nouveau nom de tag (laisser vide pour dissoudre le tag)",

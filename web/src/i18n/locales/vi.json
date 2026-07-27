@@ -1725,6 +1725,7 @@
     "Enter key, format: AccessKey|SecretAccessKey|Region": "Nhập khóa, định dạng: AccessKey|SecretAccessKey|Region",
     "Enter key, one per line, format: AccessKey|SecretAccessKey|Region": "Nhập khóa, mỗi dòng một khóa, định dạng: AccessKey|SecretAccessKey|Region",
     "Enter model name": "Nhập tên mô hình",
+    "Enter models that use a video-task-capable channel. Press Enter or comma to add each model.": "Nhập các mô hình sử dụng kênh hỗ trợ tác vụ video. Nhấn Enter hoặc dấu phẩy để thêm từng mô hình.",
     "Enter new key to update": "Nhập khóa mới để cập nhật",
     "Enter new key to update, or leave empty to keep current key": "Nhập khóa mới để cập nhật, hoặc để trống để giữ khóa hiện tại",
     "Enter new tag name (leave empty to disband tag)": "Nhập tên thẻ mới (để trống để hủy thẻ)",

@@ -39,10 +39,15 @@ type chatVideoBridgeRequest struct {
 
 func IsChatVideoBridgeModel(settings system_setting.ChatVideoBridgeSetting, model string) bool {
 	model = strings.TrimSpace(model)
-	return settings.Enabled &&
-		slices.Contains(settings.Models, model) &&
-		(slices.Contains(doubao.TextToVideoModelList, model) ||
-			slices.Contains(geminitask.TextToVideoModelList, model))
+	if !settings.Enabled || !slices.Contains(settings.Models, model) {
+		return false
+	}
+
+	// Administrators can enter their own video model IDs, including aliases
+	// mapped by a channel. Keep rejecting known image-only Seedance models
+	// because a chat request cannot provide their required image input.
+	return !slices.Contains(doubao.ModelList, model) ||
+		slices.Contains(doubao.TextToVideoModelList, model)
 }
 
 // BuildChatVideoTaskRequest converts the small, intentionally supported subset

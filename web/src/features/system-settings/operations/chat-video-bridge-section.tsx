@@ -22,7 +22,7 @@ import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
-import { Checkbox } from '@/components/ui/checkbox'
+import { TagInput } from '@/components/tag-input'
 import {
   Form,
   FormControl,
@@ -49,24 +49,9 @@ import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
-const videoModels = [
-  'doubao-seedance-1-0-pro-250528',
-  'doubao-seedance-1-0-lite-t2v',
-  'doubao-seedance-1-5-pro-251215',
-  'doubao-seedance-2-0-260128',
-  'doubao-seedance-2-0-fast-260128',
-  'doubao-seedance-2.0',
-  'veo-3.0-generate-001',
-  'veo-3.0-fast-generate-001',
-  'veo-3.1-generate-001',
-  'veo-3.1-fast-generate-001',
-  'veo-3.1-generate-preview',
-  'veo-3.1-fast-generate-preview',
-] as const
-
 const chatVideoBridgeSchema = z.object({
   enabled: z.boolean(),
-  models: z.array(z.enum(videoModels)),
+  models: z.array(z.string().trim().min(1)),
   maxWaitSeconds: z.coerce.number().int().min(0).max(600),
   taskPageTTLSeconds: z.coerce.number().int().min(300).max(604800),
 })
@@ -88,7 +73,7 @@ function parseSelectedModels(raw: string): ChatVideoBridgeFormValues['models'] {
     if (!Array.isArray(parsed)) return []
     return parsed.filter(
       (value): value is ChatVideoBridgeFormValues['models'][number] =>
-        typeof value === 'string' && videoModels.includes(value as never)
+        typeof value === 'string' && value.trim() !== ''
     )
   } catch {
     return []
@@ -192,41 +177,23 @@ export function ChatVideoBridgeSection(props: ChatVideoBridgeSectionProps) {
                 <FormLabel>{t('Allowed Video Models')}</FormLabel>
                 <FormDescription>
                   {t(
-                    'Only checked models may use the chat video bridge. Start with one verified model for a safe rollout.'
+                    'Enter models that use a video-task-capable channel. Press Enter or comma to add each model.'
                   )}
                 </FormDescription>
-                <div className='mt-3 grid gap-3 sm:grid-cols-2'>
-                  {videoModels.map((model) => (
-                    <FormField
-                      key={model}
-                      control={form.control}
-                      name='models'
-                      render={({ field }) => {
-                        const selected = field.value.includes(model)
-                        return (
-                          <div className='flex items-center gap-2'>
-                            <Checkbox
-                              id={`chat-video-model-${model}`}
-                              checked={selected}
-                              onCheckedChange={(checked) => {
-                                const nextModels = checked
-                                  ? [...field.value, model]
-                                  : field.value.filter((item) => item !== model)
-                                field.onChange(nextModels)
-                              }}
-                            />
-                            <label
-                              htmlFor={`chat-video-model-${model}`}
-                              className='cursor-pointer font-mono text-sm'
-                            >
-                              {model}
-                            </label>
-                          </div>
-                        )
-                      }}
-                    />
-                  ))}
-                </div>
+                <FormField
+                  control={form.control}
+                  name='models'
+                  render={({ field }) => (
+                    <FormControl>
+                      <TagInput
+                        className='mt-3 font-mono'
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder={t('Custom model (comma-separated)')}
+                      />
+                    </FormControl>
+                  )}
+                />
                 <FormMessage />
               </FormItem>
 

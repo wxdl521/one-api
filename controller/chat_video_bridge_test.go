@@ -63,6 +63,15 @@ func TestIsChatVideoBridgeModelSupportsAllowListedVeoModel(t *testing.T) {
 	assert.True(t, IsChatVideoBridgeModel(settings, "veo-3.1-generate-preview"))
 }
 
+func TestIsChatVideoBridgeModelSupportsCustomAllowListedModel(t *testing.T) {
+	settings := system_setting.ChatVideoBridgeSetting{
+		Enabled: true,
+		Models:  []string{"partner-veo-model"},
+	}
+
+	assert.True(t, IsChatVideoBridgeModel(settings, "partner-veo-model"))
+}
+
 func TestBuildChatVideoTaskRequestAcceptsOneFinalUserImage(t *testing.T) {
 	var request openai.GeneralOpenAIRequest
 	err := common.Unmarshal([]byte(`{
