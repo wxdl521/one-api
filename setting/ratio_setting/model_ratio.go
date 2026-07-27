@@ -299,6 +299,8 @@ var defaultModelPrice = map[string]float64{
 	"gpt-4o-mini-tts":                0.3,
 	"veo-3.0-generate-001":           0.4,
 	"veo-3.0-fast-generate-001":      0.15,
+	"veo-3.1-generate-001":           0.4,
+	"veo-3.1-fast-generate-001":      0.15,
 	"veo-3.1-generate-preview":       0.4,
 	"veo-3.1-fast-generate-preview":  0.15,
 }

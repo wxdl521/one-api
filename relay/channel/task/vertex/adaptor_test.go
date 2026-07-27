@@ -30,3 +30,10 @@ func TestTaskAdaptorBuildsVertexVeoURLWithAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/publishers/google/models/veo-3.1-fast-generate-preview:predictLongRunning?key=AIza-test-key", url)
 }
+
+func TestTaskAdaptorListsStableVeo31Models(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+
+	assert.Contains(t, adaptor.GetModelList(), "veo-3.1-generate-001")
+	assert.Contains(t, adaptor.GetModelList(), "veo-3.1-fast-generate-001")
+}
