@@ -212,7 +212,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
+	if !c.GetBool("chat_video_bridge_response_suppressed") {
+		c.JSON(http.StatusOK, ov)
+	}
 	return localID, responseBody, nil
 }
 

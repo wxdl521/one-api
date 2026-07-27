@@ -139,6 +139,7 @@ import {
 import {
   ADD_MODE_OPTIONS,
   CHANNEL_STATUS_LABELS,
+  CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN,
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_WARNINGS,
   ERROR_MESSAGES,
@@ -850,7 +851,9 @@ export function ChannelMutateDrawer({
     multiKeyMode === 'batch' || multiKeyMode === 'multi_to_single'
   const isChannelDetailLoading = isEditing && isChannelLoading
   const supportsMultiKeyAddMode =
-    currentType !== 57 && !(currentType === 41 && vertexKeyType === 'api_key')
+    currentType !== 57 &&
+    currentType !== CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN &&
+    !(currentType === 41 && vertexKeyType === 'api_key')
   const addModeOptions = useMemo(
     () =>
       supportsMultiKeyAddMode
@@ -1270,6 +1273,11 @@ export function ChannelMutateDrawer({
       if (!currentBaseUrlValue || currentBaseUrlValue === '') {
         form.setValue('base_url', 'https://ark.cn-beijing.volces.com')
       }
+    }
+
+    if (currentType === CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN) {
+      form.setValue('base_url', 'https://ark.cn-beijing.volces.com/api/plan/v3')
+      form.setValue('agent_plan_usage_enabled', true)
     }
 
     // Type 18 (Xunfei) - set default other (version)
@@ -2737,6 +2745,28 @@ export function ChannelMutateDrawer({
                               />
                             )}
 
+                            {currentType ===
+                              CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN && (
+                              <FormField
+                                control={form.control}
+                                name='base_url'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>{t('API Base URL')}</FormLabel>
+                                    <FormControl>
+                                      <Input readOnly {...field} />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Agent Plan uses the fixed gateway https://ark.cn-beijing.volces.com/api/plan/v3.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
                             {/* Coze (type 49) */}
                             {currentType === 49 && (
                               <FormField
@@ -2761,7 +2791,14 @@ export function ChannelMutateDrawer({
                             )}
 
                             {/* General base_url for other types */}
-                            {![3, 8, 22, 36, 45].includes(currentType) && (
+                            {![
+                              3,
+                              8,
+                              22,
+                              36,
+                              45,
+                              CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN,
+                            ].includes(currentType) && (
                               <FormField
                                 control={form.control}
                                 name='base_url'
@@ -4630,7 +4667,9 @@ export function ChannelMutateDrawer({
                         )}
 
                         {(currentType === 45 ||
-                          currentType === CHANNEL_TYPE_ADVANCED_CUSTOM) && (
+                          currentType === CHANNEL_TYPE_ADVANCED_CUSTOM ||
+                          currentType ===
+                            CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN) && (
                           <div className={sideDrawerSectionClassName()}>
                             <CardHeading
                               title={t('Agent Plan Usage')}
@@ -4668,6 +4707,14 @@ export function ChannelMutateDrawer({
                                 />
                               </div>
                               <div className='space-y-4 px-4 py-3'>
+                                {currentType ===
+                                  CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN && (
+                                  <FormDescription>
+                                    {t(
+                                      'Model calls use this channel’s API Key. VolcEngine Access Key and Secret Key are only used for official AFP usage queries.'
+                                    )}
+                                  </FormDescription>
+                                )}
                                 <FormField
                                   control={form.control}
                                   name='agent_plan_access_key'

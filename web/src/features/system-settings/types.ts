@@ -364,6 +364,10 @@ export type OperationsSettings = {
   'chat_video_bridge.models': string
   'chat_video_bridge.max_wait_seconds': number
   'chat_video_bridge.task_page_ttl_seconds': number
+  'chat_image_bridge.enabled': boolean
+  'chat_image_bridge.models': string
+  'chat_image_bridge.max_wait_seconds': number
+  'chat_image_bridge.media_ttl_seconds': number
 }
 
 export type SecuritySettings = {

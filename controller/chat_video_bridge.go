@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/the-one/common"
 	"github.com/QuantumNous/the-one/model"
 	"github.com/QuantumNous/the-one/relay/channel/task/doubao"
+	geminitask "github.com/QuantumNous/the-one/relay/channel/task/gemini"
 	relaycommon "github.com/QuantumNous/the-one/relay/common"
 	"github.com/QuantumNous/the-one/relay/helper"
 	openai "github.com/QuantumNous/the-one/relaykit/dto"
@@ -40,7 +41,8 @@ func IsChatVideoBridgeModel(settings system_setting.ChatVideoBridgeSetting, mode
 	model = strings.TrimSpace(model)
 	return settings.Enabled &&
 		slices.Contains(settings.Models, model) &&
-		slices.Contains(doubao.TextToVideoModelList, model)
+		(slices.Contains(doubao.TextToVideoModelList, model) ||
+			slices.Contains(geminitask.TextToVideoModelList, model))
 }
 
 // BuildChatVideoTaskRequest converts the small, intentionally supported subset
@@ -59,6 +61,7 @@ func BuildChatVideoTaskRequest(request *openai.GeneralOpenAIRequest) (*relaycomm
 	}
 
 	var prompt string
+	var images []string
 	for _, message := range request.Messages {
 		if hasChatVideoBridgeJSONValue(message.ToolCalls) || message.ToolCallId != "" {
 			return nil, ErrChatVideoBridgeUnsupportedRequest
@@ -66,11 +69,46 @@ func BuildChatVideoTaskRequest(request *openai.GeneralOpenAIRequest) (*relaycomm
 		if message.Role != "user" {
 			continue
 		}
-		content, ok := message.Content.(string)
-		if !ok {
-			return nil, ErrChatVideoBridgeUnsupportedRequest
+		switch content := message.Content.(type) {
+		case string:
+			prompt = content
+			images = nil
+		default:
+			parts := message.ParseContent()
+			if len(parts) == 0 {
+				return nil, ErrChatVideoBridgeUnsupportedRequest
+			}
+			var textParts []string
+			var imageURL string
+			for _, part := range parts {
+				switch part.Type {
+				case openai.ContentTypeText:
+					if strings.TrimSpace(part.Text) != "" {
+						textParts = append(textParts, strings.TrimSpace(part.Text))
+					}
+				case openai.ContentTypeImageURL:
+					image := part.GetImageMedia()
+					if image == nil || strings.TrimSpace(image.Url) == "" || imageURL != "" {
+						return nil, ErrChatVideoBridgeUnsupportedRequest
+					}
+					imageURL = strings.TrimSpace(image.Url)
+				default:
+					return nil, ErrChatVideoBridgeUnsupportedRequest
+				}
+			}
+			if len(textParts) != 1 {
+				return nil, ErrChatVideoBridgeUnsupportedRequest
+			}
+			if imageURL != "" && (!slices.Contains(geminitask.ImageToVideoModelList, request.Model) || geminitask.ParseImageInput(imageURL) == nil) {
+				return nil, ErrChatVideoBridgeUnsupportedRequest
+			}
+			prompt = textParts[0]
+			if imageURL == "" {
+				images = nil
+			} else {
+				images = []string{imageURL}
+			}
 		}
-		prompt = content
 	}
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
@@ -80,6 +118,7 @@ func BuildChatVideoTaskRequest(request *openai.GeneralOpenAIRequest) (*relaycomm
 	return &relaycommon.TaskSubmitReq{
 		Model:  request.Model,
 		Prompt: prompt,
+		Images: images,
 	}, nil
 }
 

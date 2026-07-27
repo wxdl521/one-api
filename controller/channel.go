@@ -486,6 +486,17 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		if channel.Key == "" {
 			return fmt.Errorf("channel cannot be empty")
 		}
+		if channel.Type == constant.ChannelTypeVolcEngineAgentPlan {
+			keyCount := 0
+			for _, key := range strings.Split(channel.Key, "\n") {
+				if strings.TrimSpace(key) != "" {
+					keyCount++
+				}
+			}
+			if keyCount != 1 {
+				return fmt.Errorf("VolcEngine Agent Plan channels require a single API key")
+			}
+		}
 
 		// 检查模型名称长度是否超过 255
 		for _, m := range channel.GetModels() {
@@ -610,6 +621,15 @@ func AddChannel(c *gin.Context) {
 	err := c.ShouldBindJSON(&addChannelRequest)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if addChannelRequest.Channel != nil &&
+		addChannelRequest.Channel.Type == constant.ChannelTypeVolcEngineAgentPlan &&
+		addChannelRequest.Mode != "single" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "VolcEngine Agent Plan channels do not support batch creation",
+		})
 		return
 	}
 
@@ -987,6 +1007,13 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	if channel.Type == constant.ChannelTypeVolcEngineAgentPlan && channel.ChannelInfo.IsMultiKey {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "VolcEngine Agent Plan channels do not support multi-key mode",
+		})
+		return
+	}
 
 	if channelHasSensitiveChanges(&channel, originChannel, requestData) &&
 		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {

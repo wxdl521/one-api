@@ -116,13 +116,13 @@ func ValidateAgentPlanQuotaPoolSource(channel *Channel) error {
 	if channel == nil || channel.Id <= 0 {
 		return ErrAgentPlanQuotaPoolSourceInvalid
 	}
-	if channel.Type != constant.ChannelTypeVolcEngine && channel.Type != constant.ChannelTypeAdvancedCustom {
+	if !constant.IsAgentPlanUsageChannelType(channel.Type) {
 		return fmt.Errorf("%w: channel type is not supported", ErrAgentPlanQuotaPoolSourceInvalid)
 	}
 	if channel.ChannelInfo.IsMultiKey {
 		return fmt.Errorf("%w: multi-key channels are not supported", ErrAgentPlanQuotaPoolSourceInvalid)
 	}
-	if !channel.GetOtherSettings().AgentPlanUsageEnabled {
+	if !channel.IsAgentPlanUsageEnabled() {
 		return fmt.Errorf("%w: agent plan usage is disabled", ErrAgentPlanQuotaPoolSourceInvalid)
 	}
 	if strings.TrimSpace(channel.AgentPlanAccessKey) == "" || strings.TrimSpace(channel.AgentPlanSecretKey) == "" {

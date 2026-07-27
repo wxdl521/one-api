@@ -75,10 +75,10 @@ func GetAgentPlanChannelUsage(c *gin.Context) {
 		if err != nil || channel == nil || channel.ChannelInfo.IsMultiKey {
 			continue
 		}
-		if channel.Type != constant.ChannelTypeVolcEngine && channel.Type != constant.ChannelTypeAdvancedCustom {
+		if !constant.IsAgentPlanUsageChannelType(channel.Type) {
 			continue
 		}
-		if !channel.GetOtherSettings().AgentPlanUsageEnabled {
+		if !channel.IsAgentPlanUsageEnabled() {
 			continue
 		}
 		channels = append(channels, channel)

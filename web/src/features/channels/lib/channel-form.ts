@@ -20,6 +20,7 @@ import { z } from 'zod'
 
 import {
   CHANNEL_STATUS,
+  CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN,
   ERROR_MESSAGES,
   MODEL_FETCHABLE_TYPES,
 } from '../constants'
@@ -315,6 +316,18 @@ export const channelFormSchema = z
     }
 
     if (
+      data.type === CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN &&
+      data.multi_key_mode &&
+      data.multi_key_mode !== 'single'
+    ) {
+      addRequiredIssue(
+        ctx,
+        'multi_key_mode',
+        'Agent Plan channels do not support batch creation'
+      )
+    }
+
+    if (
       data.type === 41 &&
       data.vertex_key_type === 'json' &&
       data.key?.trim() &&
@@ -456,7 +469,8 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
-  let agentPlanUsageEnabled = false
+  let agentPlanUsageEnabled =
+    channel.type === CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN
   let advancedCustom = ''
 
   if (channel.settings) {
@@ -483,7 +497,10 @@ export function transformChannelToFormDefaults(
       )
         ? parsed.upstream_model_update_ignored_models.join(',')
         : ''
-      agentPlanUsageEnabled = parsed.agent_plan_usage_enabled === true
+      agentPlanUsageEnabled =
+        channel.type === CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN
+          ? parsed.agent_plan_usage_enabled !== false
+          : parsed.agent_plan_usage_enabled === true
       if (parsed.advanced_custom) {
         advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
       }
@@ -651,7 +668,11 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
   settingsObj.disable_task_polling_sleep =
     formData.disable_task_polling_sleep === true
 
-  if (formData.type === 45 || formData.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
+  if (
+    formData.type === 45 ||
+    formData.type === CHANNEL_TYPE_ADVANCED_CUSTOM ||
+    formData.type === CHANNEL_TYPE_VOLCENGINE_AGENT_PLAN
+  ) {
     settingsObj.agent_plan_usage_enabled =
       formData.agent_plan_usage_enabled === true
   } else if ('agent_plan_usage_enabled' in settingsObj) {

@@ -60,6 +60,10 @@ const defaultOperationsSettings: OperationsSettings = {
   'chat_video_bridge.models': '[]',
   'chat_video_bridge.max_wait_seconds': 300,
   'chat_video_bridge.task_page_ttl_seconds': 86400,
+  'chat_image_bridge.enabled': false,
+  'chat_image_bridge.models': '[]',
+  'chat_image_bridge.max_wait_seconds': 300,
+  'chat_image_bridge.media_ttl_seconds': 86400,
 }
 
 export function OperationsSettings() {

@@ -42,12 +42,46 @@ func TestIsChatVideoBridgeModelRequiresEnabledAllowListedSeedanceModel(t *testin
 
 	assert.True(t, IsChatVideoBridgeModel(settings, "doubao-seedance-2-0-260128"))
 	assert.False(t, IsChatVideoBridgeModel(settings, "doubao-seedance-2-0-fast-260128"))
+	assert.True(t, IsChatVideoBridgeModel(system_setting.ChatVideoBridgeSetting{
+		Enabled: true,
+		Models:  []string{"doubao-seedance-2.0"},
+	}, "doubao-seedance-2.0"))
 	assert.False(t, IsChatVideoBridgeModel(system_setting.ChatVideoBridgeSetting{
 		Enabled: true,
 		Models:  []string{"doubao-seedance-1-0-lite-i2v"},
 	}, "doubao-seedance-1-0-lite-i2v"))
 	assert.False(t, IsChatVideoBridgeModel(settings, "gpt-4o"))
 	assert.False(t, IsChatVideoBridgeModel(system_setting.ChatVideoBridgeSetting{}, "doubao-seedance-2-0-260128"))
+}
+
+func TestIsChatVideoBridgeModelSupportsAllowListedVeoModel(t *testing.T) {
+	settings := system_setting.ChatVideoBridgeSetting{
+		Enabled: true,
+		Models:  []string{"veo-3.1-generate-preview"},
+	}
+
+	assert.True(t, IsChatVideoBridgeModel(settings, "veo-3.1-generate-preview"))
+}
+
+func TestBuildChatVideoTaskRequestAcceptsOneFinalUserImage(t *testing.T) {
+	var request openai.GeneralOpenAIRequest
+	err := common.Unmarshal([]byte(`{
+		"model":"veo-3.1-generate-preview",
+		"messages":[{
+			"role":"user",
+			"content":[
+				{"type":"text","text":"Animate this photo"},
+				{"type":"image_url","image_url":{"url":"data:image/png;base64,aGVsbG8="}}
+			]
+		}]
+	}`), &request)
+	require.NoError(t, err)
+
+	taskRequest, err := BuildChatVideoTaskRequest(&request)
+
+	require.NoError(t, err)
+	assert.Equal(t, "Animate this photo", taskRequest.Prompt)
+	assert.Equal(t, []string{"data:image/png;base64,aGVsbG8="}, taskRequest.Images)
 }
 
 func TestBuildChatVideoTaskRequestRejectsUnsupportedChatFeatures(t *testing.T) {

@@ -49,17 +49,22 @@ import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
-const seedanceModels = [
+const videoModels = [
   'doubao-seedance-1-0-pro-250528',
   'doubao-seedance-1-0-lite-t2v',
   'doubao-seedance-1-5-pro-251215',
   'doubao-seedance-2-0-260128',
   'doubao-seedance-2-0-fast-260128',
+  'doubao-seedance-2.0',
+  'veo-3.0-generate-001',
+  'veo-3.0-fast-generate-001',
+  'veo-3.1-generate-preview',
+  'veo-3.1-fast-generate-preview',
 ] as const
 
 const chatVideoBridgeSchema = z.object({
   enabled: z.boolean(),
-  models: z.array(z.enum(seedanceModels)),
+  models: z.array(z.enum(videoModels)),
   maxWaitSeconds: z.coerce.number().int().min(0).max(600),
   taskPageTTLSeconds: z.coerce.number().int().min(300).max(604800),
 })
@@ -81,7 +86,7 @@ function parseSelectedModels(raw: string): ChatVideoBridgeFormValues['models'] {
     if (!Array.isArray(parsed)) return []
     return parsed.filter(
       (value): value is ChatVideoBridgeFormValues['models'][number] =>
-        typeof value === 'string' && seedanceModels.includes(value as never)
+        typeof value === 'string' && videoModels.includes(value as never)
     )
   } catch {
     return []
@@ -165,7 +170,7 @@ export function ChatVideoBridgeSection(props: ChatVideoBridgeSectionProps) {
                     </FormLabel>
                     <FormDescription>
                       {t(
-                        'Convert eligible chat completion requests into Seedance text-to-video tasks without client changes.'
+                        'Convert eligible chat completion requests into supported video tasks without client changes.'
                       )}
                     </FormDescription>
                   </SettingsSwitchContent>
@@ -182,14 +187,14 @@ export function ChatVideoBridgeSection(props: ChatVideoBridgeSectionProps) {
 
             <SettingsFormGrid>
               <FormItem className='lg:col-span-2'>
-                <FormLabel>{t('Allowed Seedance Models')}</FormLabel>
+                <FormLabel>{t('Allowed Video Models')}</FormLabel>
                 <FormDescription>
                   {t(
                     'Only checked models may use the chat video bridge. Start with one verified model for a safe rollout.'
                   )}
                 </FormDescription>
                 <div className='mt-3 grid gap-3 sm:grid-cols-2'>
-                  {seedanceModels.map((model) => (
+                  {videoModels.map((model) => (
                     <FormField
                       key={model}
                       control={form.control}

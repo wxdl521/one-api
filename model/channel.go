@@ -508,6 +508,9 @@ func (channel *Channel) GetWeight() int {
 }
 
 func (channel *Channel) GetBaseURL() string {
+	if channel.Type == constant.ChannelTypeVolcEngineAgentPlan {
+		return constant.ChannelBaseURLs[constant.ChannelTypeVolcEngineAgentPlan]
+	}
 	if channel.BaseURL == nil {
 		return ""
 	}
@@ -974,9 +977,26 @@ func (channel *Channel) ValidateSettings() error {
 			return err
 		}
 	}
+	if channel.Type == constant.ChannelTypeVolcEngineAgentPlan {
+		baseURL := constant.ChannelBaseURLs[constant.ChannelTypeVolcEngineAgentPlan]
+		channel.BaseURL = &baseURL
+
+		usageConfigured := false
+		if channel.OtherSettings != "" {
+			var rawSettings map[string]any
+			if err := common.UnmarshalJsonStr(channel.OtherSettings, &rawSettings); err != nil {
+				return err
+			}
+			_, usageConfigured = rawSettings["agent_plan_usage_enabled"]
+		}
+		if !usageConfigured {
+			channelOtherSettings.AgentPlanUsageEnabled = true
+			channel.SetOtherSettings(*channelOtherSettings)
+		}
+	}
 	if channelOtherSettings.AgentPlanUsageEnabled {
-		if channel.Type != constant.ChannelTypeVolcEngine && channel.Type != constant.ChannelTypeAdvancedCustom {
-			return fmt.Errorf("agent plan usage is only supported for VolcEngine or Advanced Custom channels")
+		if !constant.IsAgentPlanUsageChannelType(channel.Type) {
+			return fmt.Errorf("agent plan usage is only supported for VolcEngine, Advanced Custom, or VolcEngine Agent Plan channels")
 		}
 		if channel.ChannelInfo.IsMultiKey {
 			return fmt.Errorf("agent plan usage is only supported for single-key channels")
@@ -998,6 +1018,29 @@ func (channel *Channel) ValidateSettings() error {
 		}
 	}
 	return nil
+}
+
+// IsAgentPlanUsageEnabled returns whether a channel may query official AFP
+// usage. The dedicated Agent Plan channel defaults to enabled when created
+// before its explicit setting is persisted; legacy channel types remain opt-in.
+func (channel *Channel) IsAgentPlanUsageEnabled() bool {
+	settings := channel.GetOtherSettings()
+	if settings.AgentPlanUsageEnabled {
+		return true
+	}
+	if channel.Type != constant.ChannelTypeVolcEngineAgentPlan {
+		return false
+	}
+	if channel.OtherSettings == "" {
+		return true
+	}
+
+	var rawSettings map[string]any
+	if err := common.UnmarshalJsonStr(channel.OtherSettings, &rawSettings); err != nil {
+		return false
+	}
+	_, configured := rawSettings["agent_plan_usage_enabled"]
+	return !configured
 }
 
 func (channel *Channel) GetSetting() dto.ChannelSettings {

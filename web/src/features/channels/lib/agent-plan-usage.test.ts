@@ -38,7 +38,7 @@ function channel(overrides: Partial<Channel>): Channel {
   return Object.assign(base, overrides)
 }
 
-test('loads AFP usage only for enabled single-key VolcEngine channels', () => {
+test('loads AFP usage for enabled legacy channels and default-enabled Agent Plan channels', () => {
   assert.equal(
     isAgentPlanUsageEnabled(
       channel({ settings: '{"agent_plan_usage_enabled":true}' })
@@ -65,6 +65,13 @@ test('loads AFP usage only for enabled single-key VolcEngine channels', () => {
     ),
     false
   )
+  assert.equal(isAgentPlanUsageEnabled(channel({ type: 60 })), true)
+  assert.equal(
+    isAgentPlanUsageEnabled(
+      channel({ type: 60, settings: '{"agent_plan_usage_enabled":false}' })
+    ),
+    false
+  )
 })
 
 test('contains Agent Plan usage request failures within the card view', async () => {
@@ -72,5 +79,8 @@ test('contains Agent Plan usage request failures within the card view', async ()
     throw new Error('upstream unavailable')
   })
 
-  assert.deepEqual(response, { success: false, data: {} } satisfies AgentPlanUsageResponse)
+  assert.deepEqual(response, {
+    success: false,
+    data: {},
+  } satisfies AgentPlanUsageResponse)
 })

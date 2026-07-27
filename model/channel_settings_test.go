@@ -91,7 +91,7 @@ func TestAgentPlanUsageRequiresEligibleSingleKeyChannel(t *testing.T) {
 			channel: Channel{
 				Type: constant.ChannelTypeOpenAI,
 			},
-			wantErr: "VolcEngine or Advanced Custom",
+			wantErr: "VolcEngine, Advanced Custom, or VolcEngine Agent Plan",
 		},
 		{
 			name: "multi-key channel is rejected",
@@ -118,4 +118,31 @@ func TestAgentPlanUsageRequiresEligibleSingleKeyChannel(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestVolcEngineAgentPlanChannelUsesFixedBaseURLAndDefaultsUsageOn(t *testing.T) {
+	channel := &Channel{Type: constant.ChannelTypeVolcEngineAgentPlan}
+
+	require.NoError(t, channel.ValidateSettings())
+	require.NotNil(t, channel.BaseURL)
+	assert.Equal(t, "https://ark.cn-beijing.volces.com/api/plan/v3", *channel.BaseURL)
+	assert.True(t, channel.GetOtherSettings().AgentPlanUsageEnabled)
+
+	multiKeyChannel := &Channel{
+		Type:        constant.ChannelTypeVolcEngineAgentPlan,
+		ChannelInfo: ChannelInfo{IsMultiKey: true},
+	}
+	multiKeyChannel.SetOtherSettings(dto.ChannelOtherSettings{AgentPlanUsageEnabled: true})
+
+	require.ErrorContains(t, multiKeyChannel.ValidateSettings(), "single-key")
+}
+
+func TestVolcEngineAgentPlanChannelIgnoresCustomBaseURL(t *testing.T) {
+	customBaseURL := "https://unexpected.example"
+	channel := &Channel{
+		Type:    constant.ChannelTypeVolcEngineAgentPlan,
+		BaseURL: &customBaseURL,
+	}
+
+	assert.Equal(t, "https://ark.cn-beijing.volces.com/api/plan/v3", channel.GetBaseURL())
 }

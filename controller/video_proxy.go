@@ -42,6 +42,30 @@ func videoProxyCacheControl(c *gin.Context) string {
 	return "public, max-age=86400"
 }
 
+// isTrustedAICCVideoURL permits the signed result URL issued by the AICC
+// Seedance service. Some carrier networks resolve this known host through
+// 198.18.0.0/15, which generic SSRF protection correctly rejects as reserved.
+// The narrow host, path, HTTPS, and signature checks prevent this exception
+// from accepting user-controlled fetch targets.
+func isTrustedAICCVideoURL(channelType int, rawURL string) bool {
+	if channelType != constant.ChannelTypeAICCSeedance {
+		return false
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Scheme != "https" || parsedURL.User != nil || parsedURL.Port() != "" {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSuffix(parsedURL.Hostname(), "."), "ark-acg-cn-beijing.tos-cn-beijing.volces.com") {
+		return false
+	}
+	if !strings.HasPrefix(parsedURL.EscapedPath(), "/doubao-seedance-2-0/") {
+		return false
+	}
+	query := parsedURL.Query()
+	return query.Get("X-Tos-Algorithm") == "TOS4-HMAC-SHA256" && query.Get("X-Tos-Signature") != ""
+}
+
 func VideoProxy(c *gin.Context) {
 	taskID := c.Param("task_id")
 	if taskID == "" {
@@ -147,7 +171,14 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	var validateErr error
-	if proxy == "" {
+	if isTrustedAICCVideoURL(channel.Type, videoURL) {
+		// This URL is constrained above to the signed AICC Seedance result host.
+		// Use the regular relay client so the carrier-network 198.18 mapping does
+		// not get rejected again by the protected transport during dialing.
+		if proxy == "" {
+			client = service.GetHttpClient()
+		}
+	} else if proxy == "" {
 		validateErr = service.ValidateSSRFProtectedFetchURL(videoURL)
 	} else {
 		fetchSetting := system_setting.GetFetchSetting()

@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/the-one/constant"
 	"github.com/QuantumNous/the-one/relay/channel"
 	"github.com/QuantumNous/the-one/relay/channel/advancedcustom"
+	"github.com/QuantumNous/the-one/relay/channel/agentplan"
 	"github.com/QuantumNous/the-one/relay/channel/ali"
 	"github.com/QuantumNous/the-one/relay/channel/aws"
 	"github.com/QuantumNous/the-one/relay/channel/baidu"
@@ -31,6 +32,7 @@ import (
 	"github.com/QuantumNous/the-one/relay/channel/replicate"
 	"github.com/QuantumNous/the-one/relay/channel/siliconflow"
 	"github.com/QuantumNous/the-one/relay/channel/submodel"
+	"github.com/QuantumNous/the-one/relay/channel/task/aiccseedance"
 	taskali "github.com/QuantumNous/the-one/relay/channel/task/ali"
 	taskdoubao "github.com/QuantumNous/the-one/relay/channel/task/doubao"
 	taskGemini "github.com/QuantumNous/the-one/relay/channel/task/gemini"
@@ -123,6 +125,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &codex.Adaptor{}
 	case constant.APITypeAdvancedCustom:
 		return &advancedcustom.Adaptor{}
+	case constant.APITypeVolcEngineAgentPlan:
+		return &agentplan.Adaptor{}
 	}
 	return nil
 }
@@ -154,8 +158,10 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskvertex.TaskAdaptor{}
 		case constant.ChannelTypeVidu:
 			return &taskVidu.TaskAdaptor{}
-		case constant.ChannelTypeDoubaoVideo, constant.ChannelTypeVolcEngine:
+		case constant.ChannelTypeDoubaoVideo, constant.ChannelTypeVolcEngine, constant.ChannelTypeVolcEngineAgentPlan:
 			return &taskdoubao.TaskAdaptor{}
+		case constant.ChannelTypeAICCSeedance:
+			return &aiccseedance.TaskAdaptor{}
 		case constant.ChannelTypeSora, constant.ChannelTypeOpenAI:
 			return &tasksora.TaskAdaptor{}
 		case constant.ChannelTypeGemini:

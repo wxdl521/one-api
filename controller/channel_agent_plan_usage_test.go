@@ -20,11 +20,7 @@ import (
 
 func TestGetAgentPlanChannelUsageReturnsOnlyEnabledEligibleChannels(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
-	channel := model.Channel{Id: 1, Type: constant.ChannelTypeAdvancedCustom, Key: "agent-plan-key", AgentPlanAccessKey: "agent-plan-access-key", AgentPlanSecretKey: "agent-plan-secret-key", Name: "Volcano"}
-	channel.SetOtherSettings(dto.ChannelOtherSettings{
-		AgentPlanUsageEnabled: true,
-		AdvancedCustom:        &dto.AdvancedCustomConfig{},
-	})
+	channel := model.Channel{Id: 1, Type: constant.ChannelTypeVolcEngineAgentPlan, Key: "agent-plan-key", AgentPlanAccessKey: "agent-plan-access-key", AgentPlanSecretKey: "agent-plan-secret-key", Name: "Volcano"}
 	require.NoError(t, db.Create(&channel).Error)
 	require.NoError(t, db.Create(&model.Channel{Id: 2, Type: constant.ChannelTypeOpenAI, Key: "unrelated-key", Name: "Other"}).Error)
 	multiKeyChannel := model.Channel{Id: 3, Type: constant.ChannelTypeVolcEngine, Key: "multi-key", Name: "Multi key", ChannelInfo: model.ChannelInfo{IsMultiKey: true}}
@@ -35,8 +31,7 @@ func TestGetAgentPlanChannelUsageReturnsOnlyEnabledEligibleChannels(t *testing.T
 	require.NoError(t, db.Create(&failingChannel).Error)
 	disabledChannel := model.Channel{Id: 5, Type: constant.ChannelTypeVolcEngine, Key: "disabled-key", Name: "Disabled"}
 	require.NoError(t, db.Create(&disabledChannel).Error)
-	credentialsRequiredChannel := model.Channel{Id: 6, Type: constant.ChannelTypeVolcEngine, Key: "relay-key", Name: "Credentials required"}
-	credentialsRequiredChannel.SetOtherSettings(dto.ChannelOtherSettings{AgentPlanUsageEnabled: true})
+	credentialsRequiredChannel := model.Channel{Id: 6, Type: constant.ChannelTypeVolcEngineAgentPlan, Key: "relay-key", Name: "Credentials required"}
 	require.NoError(t, db.Create(&credentialsRequiredChannel).Error)
 
 	originalFetch := fetchAgentPlanUsageForChannel

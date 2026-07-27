@@ -79,6 +79,7 @@ export function getChannelTypeIcon(type: number): string {
     31: 'Yi', // LingYiWanWu
     35: 'Minimax', // MiniMax
     45: 'Volcengine', // VolcEngine
+    60: 'Volcengine', // VolcEngine Agent Plan
 
     // Other AI providers
     4: 'Ollama', // Ollama
@@ -101,6 +102,7 @@ export function getChannelTypeIcon(type: number): string {
     36: 'Suno', // SunoAPI
     55: 'OpenAI', // Sora
     54: 'Doubao', // DoubaoVideo
+    59: 'Doubao', // AICC Seedance
     56: 'Replicate', // Replicate
 
     // Tools & Platforms

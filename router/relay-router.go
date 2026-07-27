@@ -81,7 +81,7 @@ func SetRelayRouter(router *gin.Engine) {
 	}
 	{
 		chatRouter := relayV1Router.Group("")
-		chatRouter.Use(controller.PrepareChatVideoBridge(), middleware.Distribute())
+		chatRouter.Use(controller.PrepareChatImageBridge(), controller.PrepareChatVideoBridge(), middleware.Distribute())
 		chatRouter.POST("/chat/completions", controller.RelayChatCompletions)
 	}
 	{

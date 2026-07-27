@@ -84,6 +84,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		constant.ChannelTypeKling,
 		constant.ChannelTypeJimeng,
 		constant.ChannelTypeDoubaoVideo,
+		constant.ChannelTypeAICCSeedance,
 		constant.ChannelTypeVidu,
 	}
 	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
@@ -136,7 +137,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		}
 
 		// VolcEngine 图像生成模型
-		if channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream") {
+		if (channel.Type == constant.ChannelTypeVolcEngine || channel.Type == constant.ChannelTypeVolcEngineAgentPlan) && strings.Contains(testModel, "seedream") {
 			requestPath = "/v1/images/generations"
 		}
 
@@ -272,7 +273,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	apiType, _ := common.ChannelType2APIType(channel.Type)
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact &&
 		apiType != constant.APITypeOpenAI &&
-		apiType != constant.APITypeCodex {
+		apiType != constant.APITypeCodex &&
+		apiType != constant.APITypeVolcEngineAgentPlan {
 		return testResult{
 			context:     c,
 			localErr:    fmt.Errorf("responses compaction test only supports openai/codex channels, got api type %d", apiType),
