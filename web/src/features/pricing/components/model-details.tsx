@@ -446,7 +446,6 @@ function ModelBackendSignalsSection(props: { model: PricingModel }) {
 function ModelBackendProviderSection(props: { model: PricingModel }) {
   const { t } = useTranslation()
   const model = props.model
-  const groups = normalizeCatalogItems(model.enable_groups)
   const endpoints = normalizeCatalogItems(model.supported_endpoint_types)
   const tags = parseTags(model.tags)
   const cells: React.ReactNode[] = []
@@ -464,14 +463,6 @@ function ModelBackendProviderSection(props: { model: PricingModel }) {
       <ModelBillingModeBadge model={model} />
     </CatalogInfoCell>
   )
-
-  if (groups.length > 0) {
-    cells.push(
-      <CatalogInfoCell key='groups' label={t('Groups')}>
-        <CatalogPillList items={groups} />
-      </CatalogInfoCell>
-    )
-  }
 
   if (endpoints.length > 0) {
     cells.push(
@@ -849,7 +840,7 @@ function getDynamicFormattedPricesByTier(
 // Group pricing table
 // ----------------------------------------------------------------------------
 
-function GroupPricingSection(props: {
+export function GroupPricingSection(props: {
   model: PricingModel
   groupRatio: Record<string, number>
   usableGroup: Record<string, { desc: string; ratio: number }>
@@ -1181,16 +1172,6 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
             {isDynamic && (
               <DynamicPricingBreakdown billingExpr={props.model.billing_expr} />
             )}
-            <GroupPricingSection
-              model={props.model}
-              groupRatio={props.groupRatio}
-              usableGroup={props.usableGroup}
-              autoGroups={props.autoGroups}
-              priceRate={props.priceRate}
-              usdExchangeRate={props.usdExchangeRate}
-              tokenUnit={props.tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
           </section>
 
           <ModelBackendDetailsSection model={props.model} />

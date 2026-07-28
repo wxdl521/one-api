@@ -24,7 +24,6 @@ import {
   BadgeListCell,
   DataTableColumnHeader,
 } from '@/components/data-table'
-import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
@@ -52,7 +51,6 @@ export interface PricingColumnsOptions {
   priceRate?: number
   usdExchangeRate?: number
   showRechargePrice?: boolean
-  selectedGroup?: string
 }
 
 export function usePricingColumns(
@@ -64,7 +62,6 @@ export function usePricingColumns(
     priceRate = 1,
     usdExchangeRate = 1,
     showRechargePrice = false,
-    selectedGroup,
   } = options
 
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
@@ -119,10 +116,7 @@ export function usePricingColumns(
           showRechargePrice,
           priceRate,
           usdExchangeRate,
-          groupRatioMultiplier: getDynamicDisplayGroupRatio(
-            model,
-            selectedGroup
-          ),
+          groupRatioMultiplier: getDynamicDisplayGroupRatio(model),
         })
 
         if (dynamicSummary) {
@@ -185,7 +179,7 @@ export function usePricingColumns(
               showRechargePrice,
               priceRate,
               usdExchangeRate,
-              selectedGroup
+              undefined
             )
           )
           const outputPrice = stripTrailingZeros(
@@ -196,7 +190,7 @@ export function usePricingColumns(
               showRechargePrice,
               priceRate,
               usdExchangeRate,
-              selectedGroup
+              undefined
             )
           )
 
@@ -220,7 +214,7 @@ export function usePricingColumns(
             showRechargePrice,
             priceRate,
             usdExchangeRate,
-            selectedGroup
+            undefined
           )
         )
 
@@ -248,10 +242,7 @@ export function usePricingColumns(
           showRechargePrice,
           priceRate,
           usdExchangeRate,
-          groupRatioMultiplier: getDynamicDisplayGroupRatio(
-            model,
-            selectedGroup
-          ),
+          groupRatioMultiplier: getDynamicDisplayGroupRatio(model),
         })
 
         if (dynamicSummary) {
@@ -296,7 +287,7 @@ export function usePricingColumns(
             showRechargePrice,
             priceRate,
             usdExchangeRate,
-            selectedGroup
+            undefined
           )
         )
 
@@ -384,25 +375,6 @@ export function usePricingColumns(
                 copyable={false}
               />
             ))}
-          />
-        )
-      },
-      size: 130,
-      enableSorting: false,
-    },
-
-    // Enable Groups column
-    {
-      accessorKey: 'enable_groups',
-      header: t('Groups'),
-      cell: ({ row }) => {
-        const groups = row.original.enable_groups || []
-        return (
-          <BadgeListCell
-            items={groups.map((group) => (
-              <GroupBadge key={group} group={group} size='sm' />
-            ))}
-            tooltipClassName='max-w-[280px] p-2'
           />
         )
       },

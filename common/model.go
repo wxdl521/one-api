@@ -8,11 +8,13 @@ var (
 		"o3-pro",
 		"o3-deep-research",
 		"o4-mini-deep-research",
+		"gpt-5.4-pro",
 	}
 	ImageGenerationModels = []string{
 		"dall-e-3",
 		"dall-e-2",
 		"gpt-image-1",
+		"gpt-image-2",
 		"prefix:imagen-",
 		"flux-",
 		"flux.1-",

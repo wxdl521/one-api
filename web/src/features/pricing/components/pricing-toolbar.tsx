@@ -53,7 +53,7 @@ import {
   type SortOption,
   type ViewMode,
 } from '../constants'
-import type { PricingModel, PricingVendor, TokenUnit } from '../types'
+import type { PricingChannelGroup, TokenUnit } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 
 type SegmentOption = {
@@ -74,21 +74,9 @@ export interface PricingToolbarProps {
   onRechargePriceChange: (value: boolean) => void
   viewMode: ViewMode
   onViewModeChange: (value: ViewMode) => void
-  quotaTypeFilter: string
-  endpointTypeFilter: string
-  vendorFilter: string
-  groupFilter: string
-  tagFilter: string
-  onQuotaTypeChange: (value: string) => void
-  onEndpointTypeChange: (value: string) => void
-  onVendorChange: (value: string) => void
-  onGroupChange: (value: string) => void
-  onTagChange: (value: string) => void
-  vendors: PricingVendor[]
-  groups: string[]
-  groupRatios?: Record<string, number>
-  tags: string[]
-  models: PricingModel[]
+  channelFilter: string
+  onChannelChange: (value: string) => void
+  channelGroups: PricingChannelGroup[]
   hasActiveFilters: boolean
   activeFilterCount: number
   onClearFilters: () => void
@@ -134,7 +122,7 @@ function SegmentedControl(props: {
 
         return (
           <Tooltip key={option.value}>
-            <TooltipTrigger render={button}></TooltipTrigger>
+            <TooltipTrigger render={button} />
             <TooltipContent side='bottom' className='text-xs'>
               {option.tooltip}
             </TooltipContent>
@@ -280,27 +268,13 @@ export function PricingToolbar(props: PricingToolbarProps) {
         >
           <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>{t('Filter')}</SheetTitle>
-            <SheetDescription>
-              {t('Filter models by provider, group, type, endpoint, and tags.')}
-            </SheetDescription>
+            <SheetDescription>{t('Channel Providers')}</SheetDescription>
           </SheetHeader>
           <div className={sideDrawerFormClassName('gap-0')}>
             <PricingSidebar
-              quotaTypeFilter={props.quotaTypeFilter}
-              endpointTypeFilter={props.endpointTypeFilter}
-              vendorFilter={props.vendorFilter}
-              groupFilter={props.groupFilter}
-              tagFilter={props.tagFilter}
-              onQuotaTypeChange={props.onQuotaTypeChange}
-              onEndpointTypeChange={props.onEndpointTypeChange}
-              onVendorChange={props.onVendorChange}
-              onGroupChange={props.onGroupChange}
-              onTagChange={props.onTagChange}
-              vendors={props.vendors}
-              groups={props.groups}
-              groupRatios={props.groupRatios}
-              tags={props.tags}
-              models={props.models}
+              channelFilter={props.channelFilter}
+              onChannelChange={props.onChannelChange}
+              channelGroups={props.channelGroups}
               hasActiveFilters={props.hasActiveFilters}
               onClearFilters={props.onClearFilters}
               className='border-0 bg-transparent p-0 shadow-none'

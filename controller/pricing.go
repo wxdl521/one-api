@@ -33,6 +33,23 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	return filtered
 }
 
+func filterPricingByChannelGroups(pricing []model.Pricing, channelGroups []model.PricingChannelGroup) []model.Pricing {
+	visibleModels := make(map[string]struct{})
+	for _, channelGroup := range channelGroups {
+		for _, modelName := range channelGroup.Models {
+			visibleModels[modelName] = struct{}{}
+		}
+	}
+
+	filtered := make([]model.Pricing, 0, len(pricing))
+	for _, item := range pricing {
+		if _, ok := visibleModels[item.ModelName]; ok {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
@@ -57,6 +74,8 @@ func GetPricing(c *gin.Context) {
 
 	usableGroup = service.GetUserUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	channelGroups := model.GetPricingChannelGroups(pricing, usableGroup)
+	pricing = filterPricingByChannelGroups(pricing, channelGroups)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {
@@ -68,6 +87,7 @@ func GetPricing(c *gin.Context) {
 		"success":            true,
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
+		"channel_groups":     channelGroups,
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),

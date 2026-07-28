@@ -26,15 +26,14 @@ import {
   LoadingSkeleton,
   EmptyState,
   SearchBar,
-  PricingTable,
   PricingSidebar,
   PricingToolbar,
-  ModelCardGrid,
+  ChannelPricingSections,
   ModelDetailsDrawer,
 } from './components'
-import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
+import { filterChannelGroups, groupModelsByChannel } from './lib/channel-groups'
 
 export function Pricing() {
   const { t } = useTranslation()
@@ -44,7 +43,7 @@ export function Pricing() {
 
   const {
     models,
-    vendors,
+    channelGroups,
     groupRatio,
     usableGroup,
     endpointMap,
@@ -57,28 +56,19 @@ export function Pricing() {
   const {
     searchInput,
     sortBy,
-    vendorFilter,
-    groupFilter,
-    quotaTypeFilter,
-    endpointTypeFilter,
-    tagFilter,
+    channelFilter,
     tokenUnit,
     viewMode,
     showRechargePrice,
     setSearchInput,
     setSortBy,
-    setVendorFilter,
-    setGroupFilter,
-    setQuotaTypeFilter,
-    setEndpointTypeFilter,
-    setTagFilter,
+    setChannelFilter,
     setTokenUnit,
     setViewMode,
     setShowRechargePrice,
     filteredModels,
     hasActiveFilters,
     activeFilterCount,
-    availableTags,
     clearFilters,
     clearSearch,
   } = useFilters(models || [])
@@ -97,12 +87,25 @@ export function Pricing() {
     [models, selectedModelName]
   )
 
-  const availableGroups = useMemo(
+  const channelModelGroups = useMemo(
+    () => groupModelsByChannel(filteredModels, channelGroups),
+    [channelGroups, filteredModels]
+  )
+
+  const visibleChannelModelGroups = useMemo(
+    () => filterChannelGroups(channelModelGroups, channelFilter),
+    [channelFilter, channelModelGroups]
+  )
+
+  const visibleModelCount = useMemo(
     () =>
-      Object.keys(usableGroup || {}).filter(
-        (g) => !EXCLUDED_GROUPS.includes(g)
-      ),
-    [usableGroup]
+      channelFilter
+        ? visibleChannelModelGroups.reduce(
+            (count, channelGroup) => count + channelGroup.models.length,
+            0
+          )
+        : filteredModels.length,
+    [channelFilter, filteredModels.length, visibleChannelModelGroups]
   )
 
   const handleClearAll = useCallback(() => {
@@ -111,7 +114,7 @@ export function Pricing() {
   }, [clearFilters, clearSearch])
 
   const renderPricingContent = () => {
-    if (filteredModels.length === 0) {
+    if (visibleChannelModelGroups.length === 0) {
       return (
         <EmptyState
           searchQuery={searchInput}
@@ -121,28 +124,14 @@ export function Pricing() {
       )
     }
 
-    if (viewMode === VIEW_MODES.CARD) {
-      return (
-        <ModelCardGrid
-          models={filteredModels}
-          onModelClick={handleModelClick}
-          priceRate={priceRate}
-          usdExchangeRate={usdExchangeRate}
-          tokenUnit={tokenUnit}
-          showRechargePrice={showRechargePrice}
-          selectedGroup={groupFilter}
-        />
-      )
-    }
-
     return (
-      <PricingTable
-        models={filteredModels}
+      <ChannelPricingSections
+        groups={visibleChannelModelGroups}
+        viewMode={viewMode}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
         tokenUnit={tokenUnit}
         showRechargePrice={showRechargePrice}
-        selectedGroup={groupFilter}
         onModelClick={handleModelClick}
       />
     )
@@ -195,30 +184,16 @@ export function Pricing() {
               value={searchInput}
               onChange={setSearchInput}
               onClear={clearSearch}
-              placeholder={t(
-                'Search model name, provider, endpoint, or tag...'
-              )}
+              placeholder={t('Search model name, channel, endpoint, or tag...')}
               className='mx-auto mt-4 max-w-2xl sm:mt-6'
             />
           </header>
 
           <div className='grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)]'>
             <PricingSidebar
-              quotaTypeFilter={quotaTypeFilter}
-              endpointTypeFilter={endpointTypeFilter}
-              vendorFilter={vendorFilter}
-              groupFilter={groupFilter}
-              tagFilter={tagFilter}
-              onQuotaTypeChange={setQuotaTypeFilter}
-              onEndpointTypeChange={setEndpointTypeFilter}
-              onVendorChange={setVendorFilter}
-              onGroupChange={setGroupFilter}
-              onTagChange={setTagFilter}
-              vendors={vendors || []}
-              groups={availableGroups}
-              groupRatios={groupRatio}
-              tags={availableTags}
-              models={models || []}
+              channelFilter={channelFilter}
+              onChannelChange={setChannelFilter}
+              channelGroups={channelGroups}
               hasActiveFilters={hasActiveFilters}
               onClearFilters={clearFilters}
               className='hover-scrollbar sticky top-4 hidden max-h-[calc(100dvh-2rem)] self-start overflow-y-auto xl:block'
@@ -226,7 +201,7 @@ export function Pricing() {
 
             <main className='min-w-0 space-y-4'>
               <PricingToolbar
-                filteredCount={filteredModels.length}
+                filteredCount={visibleModelCount}
                 totalCount={models?.length}
                 sortBy={sortBy}
                 onSortChange={setSortBy}
@@ -236,21 +211,9 @@ export function Pricing() {
                 onRechargePriceChange={setShowRechargePrice}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
-                quotaTypeFilter={quotaTypeFilter}
-                endpointTypeFilter={endpointTypeFilter}
-                vendorFilter={vendorFilter}
-                groupFilter={groupFilter}
-                tagFilter={tagFilter}
-                onQuotaTypeChange={setQuotaTypeFilter}
-                onEndpointTypeChange={setEndpointTypeFilter}
-                onVendorChange={setVendorFilter}
-                onGroupChange={setGroupFilter}
-                onTagChange={setTagFilter}
-                vendors={vendors || []}
-                groups={availableGroups}
-                groupRatios={groupRatio}
-                tags={availableTags}
-                models={models || []}
+                channelFilter={channelFilter}
+                onChannelChange={setChannelFilter}
+                channelGroups={channelGroups}
                 hasActiveFilters={hasActiveFilters}
                 activeFilterCount={activeFilterCount}
                 onClearFilters={clearFilters}

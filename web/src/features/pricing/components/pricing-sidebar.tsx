@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronDown, RotateCcw } from 'lucide-react'
-import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -27,25 +26,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
-import {
-  ENDPOINT_TYPES,
-  FILTER_ALL,
-  QUOTA_TYPES,
-  getEndpointTypeLabels,
-  getQuotaTypeLabels,
-} from '../constants'
-import { parseTags } from '../lib/filters'
-import type { PricingModel, PricingVendor } from '../types'
+import type { PricingChannelGroup } from '../types'
 
 type FilterOption = {
   value: string
   label: string
   count?: number
-  suffix?: string
-  icon?: ReactNode
 }
 
 type FilterSectionProps = {
@@ -56,39 +44,12 @@ type FilterSectionProps = {
 }
 
 export interface PricingSidebarProps {
-  quotaTypeFilter: string
-  endpointTypeFilter: string
-  vendorFilter: string
-  groupFilter: string
-  tagFilter: string
-  onQuotaTypeChange: (value: string) => void
-  onEndpointTypeChange: (value: string) => void
-  onVendorChange: (value: string) => void
-  onGroupChange: (value: string) => void
-  onTagChange: (value: string) => void
-  vendors: PricingVendor[]
-  groups: string[]
-  groupRatios?: Record<string, number>
-  tags: string[]
-  models: PricingModel[]
+  channelFilter: string
+  onChannelChange: (value: string) => void
+  channelGroups: PricingChannelGroup[]
   hasActiveFilters: boolean
   onClearFilters: () => void
   className?: string
-}
-
-function countBy(
-  models: PricingModel[],
-  predicate: (model: PricingModel) => boolean
-): number {
-  return models.reduce((count, model) => count + (predicate(model) ? 1 : 0), 0)
-}
-
-function formatGroupRatio(ratio: number | undefined): string | undefined {
-  if (ratio == null) return undefined
-  const formatted = Number.isInteger(ratio)
-    ? ratio.toString()
-    : ratio.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
-  return `x${formatted}`
 }
 
 function FilterChip(props: {
@@ -108,11 +69,8 @@ function FilterChip(props: {
       )}
       title={props.option.label}
     >
-      {props.option.icon && (
-        <span className='shrink-0'>{props.option.icon}</span>
-      )}
       <span className='truncate'>{props.option.label}</span>
-      {(props.option.suffix || props.option.count != null) && (
+      {props.option.count != null && (
         <span
           className={cn(
             'rounded-md px-1.5 py-0.5 text-[12px]',
@@ -121,7 +79,7 @@ function FilterChip(props: {
               : 'bg-muted text-muted-foreground'
           )}
         >
-          {props.option.suffix ?? props.option.count}
+          {props.option.count}
         </span>
       )}
     </button>
@@ -158,91 +116,20 @@ function FilterSection(props: FilterSectionProps) {
 
 export function PricingSidebar(props: PricingSidebarProps) {
   const { t } = useTranslation()
-  const quotaTypeLabels = getQuotaTypeLabels(t)
-  const endpointTypeLabels = getEndpointTypeLabels(t)
-
-  const vendorOptions: FilterOption[] = [
+  const channelOptions: FilterOption[] = [
     {
-      value: FILTER_ALL,
-      label: t('All Vendors'),
-      count: props.models.length,
-    },
-    ...props.vendors
-      .map((vendor) => ({
-        value: vendor.name,
-        label: vendor.name,
-        count: countBy(
-          props.models,
-          (model) => model.vendor_name === vendor.name
-        ),
-        icon: vendor.icon ? getLobeIcon(vendor.icon, 14) : undefined,
-      }))
-      .filter((vendor) => vendor.count > 0),
-  ]
-
-  const groupOptions: FilterOption[] = [
-    {
-      value: FILTER_ALL,
-      label: t('All Groups'),
-    },
-    ...props.groups.map((group) => ({
-      value: group,
-      label: group,
-      suffix: formatGroupRatio(props.groupRatios?.[group]),
-    })),
-  ]
-
-  const quotaOptions: FilterOption[] = [
-    {
-      value: QUOTA_TYPES.ALL,
-      label: quotaTypeLabels[QUOTA_TYPES.ALL],
-      count: props.models.length,
-    },
-    {
-      value: QUOTA_TYPES.TOKEN,
-      label: quotaTypeLabels[QUOTA_TYPES.TOKEN],
-      count: countBy(props.models, (model) => model.quota_type === 0),
-    },
-    {
-      value: QUOTA_TYPES.REQUEST,
-      label: quotaTypeLabels[QUOTA_TYPES.REQUEST],
-      count: countBy(props.models, (model) => model.quota_type === 1),
-    },
-  ]
-
-  const tagOptions: FilterOption[] = [
-    {
-      value: FILTER_ALL,
-      label: t('All Tags'),
-      count: props.models.length,
-    },
-    ...props.tags.map((tag) => ({
-      value: tag,
-      label: tag,
-      count: countBy(props.models, (model) =>
-        parseTags(model.tags)
-          .map((item) => item.toLowerCase())
-          .includes(tag.toLowerCase())
+      value: '',
+      label: t('All Channels'),
+      count: props.channelGroups.reduce(
+        (count, channelGroup) => count + channelGroup.models.length,
+        0
       ),
-    })),
-  ]
-
-  const endpointOptions: FilterOption[] = [
-    {
-      value: ENDPOINT_TYPES.ALL,
-      label: endpointTypeLabels[ENDPOINT_TYPES.ALL],
-      count: props.models.length,
     },
-    ...Object.entries(endpointTypeLabels)
-      .filter(([value]) => value !== ENDPOINT_TYPES.ALL)
-      .map(([value, label]) => ({
-        value,
-        label,
-        count: countBy(
-          props.models,
-          (model) => model.supported_endpoint_types?.includes(value) ?? false
-        ),
-      })),
+    ...props.channelGroups.map((channelGroup) => ({
+      value: channelGroup.name,
+      label: channelGroup.name,
+      count: channelGroup.models.length,
+    })),
   ]
 
   return (
@@ -250,9 +137,6 @@ export function PricingSidebar(props: PricingSidebarProps) {
       <div className='mb-2.5 flex items-center justify-between gap-2'>
         <div>
           <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>
-          <p className='text-muted-foreground mt-1 text-xs'>
-            {t('Refine models by provider, group, type, and tags.')}
-          </p>
         </div>
         <Button
           type='button'
@@ -275,34 +159,10 @@ export function PricingSidebar(props: PricingSidebarProps) {
 
       <div className='space-y-1'>
         <FilterSection
-          title={t('Groups')}
-          value={props.groupFilter}
-          options={groupOptions}
-          onChange={props.onGroupChange}
-        />
-        <FilterSection
-          title={t('All Vendors')}
-          value={props.vendorFilter}
-          options={vendorOptions}
-          onChange={props.onVendorChange}
-        />
-        <FilterSection
-          title={t('Model Tags')}
-          value={props.tagFilter}
-          options={tagOptions}
-          onChange={props.onTagChange}
-        />
-        <FilterSection
-          title={t('Pricing Type')}
-          value={props.quotaTypeFilter}
-          options={quotaOptions}
-          onChange={props.onQuotaTypeChange}
-        />
-        <FilterSection
-          title={t('Endpoint Type')}
-          value={props.endpointTypeFilter}
-          options={endpointOptions}
-          onChange={props.onEndpointTypeChange}
+          title={t('Channel Providers')}
+          value={props.channelFilter}
+          options={channelOptions}
+          onChange={props.onChannelChange}
         />
       </div>
     </aside>

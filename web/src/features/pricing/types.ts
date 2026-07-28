@@ -27,6 +27,11 @@ export type PricingVendor = {
   description?: string
 }
 
+export type PricingChannelGroup = {
+  name: string
+  models: string[]
+}
+
 export type PricingModel = {
   id: number
   model_name: string
@@ -36,6 +41,9 @@ export type PricingModel = {
   vendor_name?: string
   vendor_icon?: string
   vendor_description?: string
+
+  /** Enabled channel names that currently expose this model to the viewer. */
+  channel_names?: string[]
   quota_type: number
   model_ratio: number
   completion_ratio: number
@@ -93,6 +101,7 @@ export type PricingData = {
   message?: string
   data: PricingModel[]
   vendors: PricingVendor[]
+  channel_groups: PricingChannelGroup[]
   group_ratio: Record<string, number>
   usable_group: Record<string, { desc: string; ratio: number }>
   supported_endpoint: Record<string, string>

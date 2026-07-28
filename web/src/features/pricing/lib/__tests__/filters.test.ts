@@ -16,17 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export { PricingSidebar } from './pricing-sidebar'
-export { PricingToolbar } from './pricing-toolbar'
-export { ModelCard } from './model-card'
-export { ModelCardGrid } from './model-card-grid'
-export { LoadingSkeleton } from './loading-skeleton'
-export { EmptyState } from './empty-state'
-export { SearchBar } from './search-bar'
-export {
-  ModelDetails,
-  ModelDetailsContent,
-  ModelDetailsDrawer,
-} from './model-details'
-export { PricingTable } from './pricing-table'
-export { ChannelPricingSections } from './channel-pricing-sections'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
+
+import type { PricingModel } from '../../types'
+import { filterBySearch } from '../filters'
+
+const model: PricingModel = {
+  id: 1,
+  model_name: 'gpt-test',
+  quota_type: 0,
+  model_ratio: 1,
+  completion_ratio: 1,
+  enable_groups: [],
+  channel_names: ['Primary Channel'],
+  supported_endpoint_types: ['openai'],
+}
+
+describe('filterBySearch', () => {
+  test('matches channel names and endpoint types', () => {
+    assert.deepEqual(filterBySearch([model], 'primary'), [model])
+    assert.deepEqual(filterBySearch([model], 'openai'), [model])
+  })
+})

@@ -46,6 +46,14 @@ export function usePricingData() {
     if (!data?.data || !data?.vendors) return []
 
     const vendorMap = new Map(data.vendors.map((v) => [v.id, v]))
+    const channelNamesByModel = new Map<string, string[]>()
+    for (const channelGroup of data.channel_groups ?? []) {
+      for (const modelName of channelGroup.models) {
+        const channelNames = channelNamesByModel.get(modelName) ?? []
+        channelNames.push(channelGroup.name)
+        channelNamesByModel.set(modelName, channelNames)
+      }
+    }
 
     return data.data.map((model) => {
       const vendor = model.vendor_id
@@ -57,6 +65,7 @@ export function usePricingData() {
         vendor_name: vendor?.name,
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
+        channel_names: channelNamesByModel.get(model.model_name) ?? [],
         group_ratio: data.group_ratio,
       }
     })
@@ -65,6 +74,7 @@ export function usePricingData() {
   return {
     models,
     vendors: data?.vendors ?? [],
+    channelGroups: data?.channel_groups ?? [],
     groupRatio: data?.group_ratio ?? {},
     usableGroup: data?.usable_group ?? {},
     endpointMap: data?.supported_endpoint ?? {},

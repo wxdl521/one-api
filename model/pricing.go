@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"sync"
@@ -45,12 +46,19 @@ type PricingVendor struct {
 	Icon        string `json:"icon,omitempty"`
 }
 
+type PricingChannelGroup struct {
+	Name   string   `json:"name"`
+	Models []string `json:"models"`
+}
+
 var (
-	pricingMap           []Pricing
-	vendorsList          []PricingVendor
-	supportedEndpointMap map[string]common.EndpointInfo
-	lastGetPricingTime   time.Time
-	updatePricingLock    sync.Mutex
+	pricingMap              []Pricing
+	vendorsList             []PricingVendor
+	supportedEndpointMap    map[string]common.EndpointInfo
+	pricingChannelAbilities []AbilityWithChannel
+	lastGetPricingTime      time.Time
+	updatePricingLock       sync.Mutex
+	pricingChannelsLock     sync.RWMutex
 
 	// 缓存映射：模型名 -> 启用分组 / 计费类型
 	modelEnableGroups     = make(map[string][]string)
@@ -83,7 +91,63 @@ func InvalidatePricingCache() {
 
 	pricingMap = nil
 	vendorsList = nil
+	pricingChannelsLock.Lock()
+	pricingChannelAbilities = nil
+	pricingChannelsLock.Unlock()
 	lastGetPricingTime = time.Time{}
+}
+
+// GetPricingChannelGroups returns visible models grouped by their enabled
+// channel names. A model may appear in more than one group when multiple
+// accessible channels provide it.
+func GetPricingChannelGroups(pricing []Pricing, usableGroups map[string]string) []PricingChannelGroup {
+	visibleModels := make(map[string]struct{}, len(pricing))
+	for _, item := range pricing {
+		visibleModels[item.ModelName] = struct{}{}
+	}
+	if len(visibleModels) == 0 {
+		return []PricingChannelGroup{}
+	}
+
+	pricingChannelsLock.RLock()
+	abilities := append([]AbilityWithChannel(nil), pricingChannelAbilities...)
+	pricingChannelsLock.RUnlock()
+
+	groupModels := make(map[string]map[string]struct{})
+	for _, ability := range abilities {
+		if ability.ChannelStatus != common.ChannelStatusEnabled || strings.TrimSpace(ability.ChannelName) == "" {
+			continue
+		}
+		if ability.Group != "all" {
+			if _, ok := usableGroups[ability.Group]; !ok {
+				continue
+			}
+		}
+		if _, ok := visibleModels[ability.Model]; !ok {
+			continue
+		}
+		if _, ok := groupModels[ability.ChannelName]; !ok {
+			groupModels[ability.ChannelName] = make(map[string]struct{})
+		}
+		groupModels[ability.ChannelName][ability.Model] = struct{}{}
+	}
+
+	channelNames := make([]string, 0, len(groupModels))
+	for name := range groupModels {
+		channelNames = append(channelNames, name)
+	}
+	sort.Strings(channelNames)
+
+	groups := make([]PricingChannelGroup, 0, len(channelNames))
+	for _, name := range channelNames {
+		models := make([]string, 0, len(groupModels[name]))
+		for modelName := range groupModels[name] {
+			models = append(models, modelName)
+		}
+		sort.Strings(models)
+		groups = append(groups, PricingChannelGroup{Name: name, Models: models})
+	}
+	return groups
 }
 
 // GetVendors 返回当前定价接口使用到的供应商信息
@@ -184,6 +248,9 @@ func updatePricing() {
 		common.SysLog(fmt.Sprintf("GetAllEnableAbilityWithChannels error: %v", err))
 		return
 	}
+	pricingChannelsLock.Lock()
+	pricingChannelAbilities = append([]AbilityWithChannel(nil), enableAbilities...)
+	pricingChannelsLock.Unlock()
 	// 预加载模型元数据与供应商一次，避免循环查询
 	var allMeta []Model
 	_ = DB.Find(&allMeta).Error
