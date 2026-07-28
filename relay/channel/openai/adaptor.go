@@ -153,6 +153,10 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestURL, info.ChannelType), nil
 		}
 
+		if info.RelayMode == relayconstant.RelayModeImagesGenerations && strings.EqualFold(info.UpstreamModelName, "gpt-image-2") {
+			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/openai/v1/images/generations", info.ChannelType), nil
+		}
+
 		model_ := info.UpstreamModelName
 		// 2025年5月10日后创建的渠道不移除.
 		if info.ChannelCreateTime < constant.AzureNoRemoveDotTime {
