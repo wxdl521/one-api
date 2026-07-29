@@ -1,10 +1,15 @@
 package controller
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/the-one/setting"
 	"github.com/QuantumNous/the-one/setting/operation_setting"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -166,4 +171,36 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
+}
+
+func TestRequestEpay_RejectsDisabledGatewayBeforeParsingPaymentRequest(t *testing.T) {
+	paymentSetting := operation_setting.GetPaymentSetting()
+	originalConfirmed := paymentSetting.ComplianceConfirmed
+	originalPayAddress := operation_setting.PayAddress
+	originalEpayID := operation_setting.EpayId
+	originalEpayKey := operation_setting.EpayKey
+	originalPayMethods := operation_setting.PayMethods
+	t.Cleanup(func() {
+		paymentSetting.ComplianceConfirmed = originalConfirmed
+		operation_setting.PayAddress = originalPayAddress
+		operation_setting.EpayId = originalEpayID
+		operation_setting.EpayKey = originalEpayKey
+		operation_setting.PayMethods = originalPayMethods
+	})
+
+	paymentSetting.ComplianceConfirmed = false
+	operation_setting.PayAddress = "https://pay.example.com"
+	operation_setting.EpayId = "epay_id"
+	operation_setting.EpayKey = "epay_key"
+	operation_setting.PayMethods = []map[string]string{{"type": "alipay"}}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/user/pay", bytes.NewBufferString("{"))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestEpay(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "当前管理员未配置支付信息")
 }

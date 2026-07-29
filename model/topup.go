@@ -43,6 +43,7 @@ const (
 
 var (
 	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
+	ErrPaymentAmountMismatch = errors.New("payment amount mismatch")
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
 )
@@ -585,5 +586,81 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
 	}
 
+	return nil
+}
+
+// RechargeEpay completes a verified ePay order exactly once and credits the
+// matching user in the same database transaction. The webhook can be retried
+// or delivered to different application instances, so process-local locks are
+// not sufficient to protect this transition.
+func RechargeEpay(tradeNo string, paymentMethod string, paidAmount string, callerIP string) error {
+	if tradeNo == "" {
+		return errors.New("未提供支付单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	var (
+		userID      int
+		quotaToAdd  int
+		money       float64
+		method      string
+		wasCredited bool
+	)
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != PaymentProviderEpay {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		actualAmount, err := decimal.NewFromString(paidAmount)
+		if err != nil || !actualAmount.Equal(decimal.NewFromFloat(topUp.Money).Round(2)) {
+			return ErrPaymentAmountMismatch
+		}
+
+		calculatedQuota, clamp := common.QuotaFromDecimalChecked(
+			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+		)
+		if clamp != nil || calculatedQuota <= 0 {
+			return errors.New("无效的充值额度")
+		}
+
+		if paymentMethod != "" {
+			topUp.PaymentMethod = paymentMethod
+		}
+		topUp.Status = common.TopUpStatusSuccess
+		topUp.CompleteTime = common.GetTimestamp()
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", calculatedQuota)).Error; err != nil {
+			return err
+		}
+
+		userID = topUp.UserId
+		quotaToAdd = calculatedQuota
+		money = topUp.Money
+		method = topUp.PaymentMethod
+		wasCredited = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if wasCredited {
+		RecordTopupLog(userID, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), money), callerIP, method, PaymentProviderEpay)
+	}
 	return nil
 }
