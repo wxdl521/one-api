@@ -36,10 +36,14 @@ Use this Skill only for the user's The One connection. The official gateway is
    `https://the-one.bolierxiang.cn`.
 4. Tell the user that the official page is open and wait. Do not request
    credentials, authentication codes, or an API key in chat.
-5. Poll the returned pairing exchange path at the returned interval, sending
-   the verifier only through the HTTPS request body. A `pending: true` result
-   means the user has not confirmed yet; wait and retry. Do not emit the
-   request ID, verifier, or response body in conversation or diagnostics.
+5. Poll exactly the returned `exchange_path` with `POST` at the returned
+   `poll_interval_seconds`, and stop when `expires_at` is reached. Send JSON
+   `{ "code_verifier": "<the in-memory verifier>" }` to
+   `https://the-one.bolierxiang.cn` plus that path. A successful pending result
+   is `{ "success": true, "data": { "pending": true } }`; wait and retry.
+   A successful completed result contains the provider manifest in `data`.
+   Do not probe alternate paths or field names, and do not emit the request ID,
+   verifier, or response body in conversation or diagnostics.
 6. After a successful exchange, retain the returned API key only in MyAgents'
    secret configuration fields. Do not display it, store it in a Skill file,
    include it in a command, or use it outside the provider and MCP entries
@@ -60,7 +64,9 @@ default selection.
   its secret Bearer credential field; enable it without changing global or
   default provider settings.
 - Skill: install the user-scoped `the-one-gateway` usage Skill from
-  `https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway/SKILL.md`.
+  `https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip`. This
+  archive contains only the versioned Markdown Skill; let MyAgents' native
+  Skill installer handle it and never execute archive contents manually.
 
 After configuration, use the provider's normal model listing and the MCP
 connection test. Report only that the provider, read-only MCP, and usage Skill

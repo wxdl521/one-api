@@ -10,6 +10,19 @@ import (
 func SetSkillRouter(router *gin.Engine) {
 	router.GET("/skills/myagents/SKILL.md", serveSkill(agentintegrations.MyAgentsPairingSkill))
 	router.GET("/skills/myagents/the-one-gateway/SKILL.md", serveSkill(agentintegrations.MyAgentsGatewaySkill))
+	router.GET("/skills/myagents/the-one-gateway.zip", serveGatewaySkillArchive)
+}
+
+func serveGatewaySkillArchive(c *gin.Context) {
+	content, err := agentintegrations.MyAgentsGatewaySkillArchive()
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=300")
+	c.Header("Content-Disposition", "attachment; filename=the-one-gateway.zip")
+	c.Header("X-The-One-Skill-Version", agentintegrations.MyAgentsSkillVersion)
+	c.Data(http.StatusOK, "application/zip", content)
 }
 
 func serveSkill(content string) gin.HandlerFunc {

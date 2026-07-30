@@ -23,6 +23,7 @@ type agentConnectCreateResponse struct {
 type agentConnectPairingCreateResponse struct {
 	RequestID           string `json:"request_id"`
 	AuthorizationPath   string `json:"authorization_path"`
+	ExchangePath        string `json:"exchange_path"`
 	PollIntervalSeconds int    `json:"poll_interval_seconds"`
 }
 
@@ -30,6 +31,11 @@ type agentConnectPairingExchangeResponse struct {
 	Pending bool   `json:"pending"`
 	APIKey  string `json:"api_key"`
 	Model   string `json:"model"`
+	Skill   struct {
+		Name    string `json:"name"`
+		Source  string `json:"source"`
+		Version string `json:"version"`
+	} `json:"skill"`
 }
 
 type agentConnectAuthorizeResponse struct {
@@ -180,6 +186,7 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	require.NoError(t, common.Unmarshal(createResponse.Data, &created))
 	require.NotEmpty(t, created.RequestID)
 	assert.Equal(t, "/agent-connect?request_id="+url.QueryEscape(created.RequestID), created.AuthorizationPath)
+	assert.Equal(t, "/api/agent-connect/pairings/"+url.PathEscape(created.RequestID)+"/exchange", created.ExchangePath)
 	assert.Equal(t, 2, created.PollIntervalSeconds)
 	assert.NotContains(t, createRecorder.Body.String(), "api_key")
 
@@ -221,4 +228,7 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	assert.False(t, exchanged.Pending)
 	assert.NotEmpty(t, exchanged.APIKey)
 	assert.Equal(t, "agent-connect-pairing-model", exchanged.Model)
+	assert.Equal(t, "the-one-gateway", exchanged.Skill.Name)
+	assert.Equal(t, "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip", exchanged.Skill.Source)
+	assert.Equal(t, "1.1.0", exchanged.Skill.Version)
 }

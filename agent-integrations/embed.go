@@ -1,6 +1,10 @@
 package agentintegrations
 
-import _ "embed"
+import (
+	"archive/zip"
+	"bytes"
+	_ "embed"
+)
 
 const MyAgentsSkillVersion = "2026-07-30"
 
@@ -9,3 +13,21 @@ var MyAgentsPairingSkill string
 
 //go:embed myagents/the-one-gateway/SKILL.md
 var MyAgentsGatewaySkill string
+
+// MyAgentsGatewaySkillArchive packages the usage Skill in the directory layout
+// accepted by MyAgents' built-in Skill installer.
+func MyAgentsGatewaySkillArchive() ([]byte, error) {
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	file, err := writer.Create("the-one-gateway/SKILL.md")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := file.Write([]byte(MyAgentsGatewaySkill)); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return archive.Bytes(), nil
+}

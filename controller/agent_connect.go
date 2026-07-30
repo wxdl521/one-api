@@ -12,8 +12,8 @@ import (
 
 const (
 	agentConnectSkillName    = "the-one-gateway"
-	agentConnectSkillVersion = "1.0.0"
-	agentConnectSkillSource  = "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway/SKILL.md"
+	agentConnectSkillVersion = "1.1.0"
+	agentConnectSkillSource  = "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip"
 )
 
 type createAgentConnectRequest struct {
@@ -88,6 +88,7 @@ func CreateAgentConnectPairing(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"request_id":            requestID,
 		"authorization_path":    "/agent-connect?request_id=" + url.QueryEscape(requestID),
+		"exchange_path":         "/api/agent-connect/pairings/" + url.PathEscape(requestID) + "/exchange",
 		"expires_at":            request.ExpiresAt.Unix(),
 		"poll_interval_seconds": 2,
 	})

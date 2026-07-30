@@ -1,6 +1,8 @@
 package router
 
 import (
+	"archive/zip"
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,6 +38,23 @@ func TestSkillRouterServesSafeVersionedMarkdown(t *testing.T) {
 			assert.Contains(t, recorder.Body.String(), testCase.expectedName)
 		})
 	}
+}
+
+func TestSkillRouterServesInstallableGatewayArchive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetSkillRouter(engine)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/skills/myagents/the-one-gateway.zip", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.True(t, strings.HasPrefix(recorder.Header().Get("Content-Type"), "application/zip"))
+	assert.NotEmpty(t, recorder.Header().Get("X-The-One-Skill-Version"))
+
+	archive, err := zip.NewReader(bytes.NewReader(recorder.Body.Bytes()), int64(recorder.Body.Len()))
+	require.NoError(t, err)
+	require.Len(t, archive.File, 1)
+	assert.Equal(t, "the-one-gateway/SKILL.md", archive.File[0].Name)
 }
 
 func TestOnboardingSkillDoesNotInstructExecutableOrCredentialDisclosure(t *testing.T) {
