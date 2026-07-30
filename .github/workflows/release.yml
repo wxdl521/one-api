@@ -95,8 +95,12 @@ jobs:
         run: |
           go mod download
           go build -ldflags "-X 'the-one/common.Version=$VERSION'" -o the-one-macos-$VERSION
+      - name: Build MyAgents connector
+        run: |
+          GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o the-one-connect-darwin-amd64 ./cmd/the-one-connect
+          GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o the-one-connect-darwin-arm64 ./cmd/the-one-connect
       - name: Generate checksums
-        run: shasum -a 256 the-one-macos-* > checksums-macos.txt
+        run: shasum -a 256 the-one-macos-* the-one-connect-darwin-* > checksums-macos.txt
 
       - name: Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
@@ -104,6 +108,7 @@ jobs:
         with:
           files: |
             the-one-macos-*
+            the-one-connect-darwin-*
             checksums-macos.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -142,6 +147,9 @@ jobs:
         run: |
           go mod download
           go build -ldflags "-s -w -X 'the-one/common.Version=$VERSION'" -o the-one-$VERSION.exe
+      - name: Build MyAgents connector
+        run: |
+          go build -trimpath -ldflags "-s -w" -o the-one-connect-windows-amd64.exe ./cmd/the-one-connect
       - name: Generate checksums
         run: sha256sum the-one-*.exe > checksums-windows.txt
 

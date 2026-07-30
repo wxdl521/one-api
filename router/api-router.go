@@ -71,6 +71,20 @@ func SetApiRouter(router *gin.Engine) {
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UniversalVerify)
 
+		agentConnectRoute := apiRouter.Group("/agent-connect")
+		{
+			agentConnectRoute.POST("/requests", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.CreateAgentConnectRequest)
+			agentConnectRoute.POST("/exchange", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ExchangeAgentConnectRequest)
+
+			authorizedAgentConnectRoute := agentConnectRoute.Group("/requests")
+			authorizedAgentConnectRoute.Use(middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache())
+			{
+				authorizedAgentConnectRoute.GET("/:request_id", controller.GetAgentConnectRequestOptions)
+				authorizedAgentConnectRoute.POST("/:request_id/authorize", controller.AuthorizeAgentConnectRequest)
+				authorizedAgentConnectRoute.POST("/:request_id/cancel", controller.CancelAgentConnectRequest)
+			}
+		}
+
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/auth/refresh", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.RefreshAuth)

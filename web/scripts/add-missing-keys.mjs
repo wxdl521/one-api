@@ -209,6 +209,123 @@ const newKeys = {
   },
 }
 
+const agentConnectEnglish = {
+  'Connect MyAgents': 'Connect MyAgents',
+  'The One connection': 'The One connection',
+  'This secure flow configures a provider, a read-only MCP server, and the The One Gateway Skill in MyAgents.':
+    'This secure flow configures a provider, a read-only MCP server, and the The One Gateway Skill in MyAgents.',
+  'Start from the connector': 'Start from the connector',
+  'The One connector needs a request ID. Download it and run one of these commands to start the connection.':
+    'The One connector needs a request ID. Download it and run one of these commands to start the connection.',
+  'Download connector for Windows': 'Download connector for Windows',
+  'Download connector for macOS': 'Download connector for macOS',
+  'Sign in to continue': 'Sign in to continue',
+  'Sign in on this official page, choose a group and model, then confirm the connection.':
+    'Sign in on this official page, choose a group and model, then confirm the connection.',
+  'Your browser will return to the local connector.':
+    'Your browser will return to the local connector.',
+  'Loading connection options...': 'Loading connection options...',
+  'The connection request could not be loaded.':
+    'The connection request could not be loaded.',
+  'No eligible models are currently available for this account.':
+    'No eligible models are currently available for this account.',
+  'Contact the site administrator if you need access to a model group.':
+    'Contact the site administrator if you need access to a model group.',
+  'Connection setup': 'Connection setup',
+  'Choose the group and model MyAgents can use.':
+    'Choose the group and model MyAgents can use.',
+  'Select a group': 'Select a group',
+  'Select a model': 'Select a model',
+  'Confirm and continue': 'Confirm and continue',
+  'Cancel connection': 'Cancel connection',
+  'Failed to complete the connection.': 'Failed to complete the connection.',
+  'Connection canceled.': 'Connection canceled.',
+  'The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.':
+    'The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.',
+}
+
+const agentConnectChinese = {
+  'Connect MyAgents': '连接 MyAgents',
+  'The One connection': 'The One 连接',
+  'This secure flow configures a provider, a read-only MCP server, and the The One Gateway Skill in MyAgents.':
+    '此安全流程将在 MyAgents 中配置模型供应商、只读 MCP 服务器和 The One Gateway Skill。',
+  'Start from the connector': '请从连接器启动',
+  'The One connector needs a request ID. Download it and run one of these commands to start the connection.':
+    'The One 连接器需要请求 ID。下载后运行以下任一命令以开始连接。',
+  'Download connector for Windows': '下载 Windows 连接器',
+  'Download connector for macOS': '下载 macOS 连接器',
+  'Sign in to continue': '登录以继续',
+  'Sign in on this official page, choose a group and model, then confirm the connection.':
+    '请在此官方页面登录，选择分组和模型，然后确认连接。',
+  'Your browser will return to the local connector.':
+    '浏览器将返回本地连接器。',
+  'Loading connection options...': '正在加载连接选项…',
+  'The connection request could not be loaded.': '无法加载连接请求。',
+  'No eligible models are currently available for this account.':
+    '此账户当前没有可用模型。',
+  'Contact the site administrator if you need access to a model group.':
+    '如需访问模型分组，请联系站点管理员。',
+  'Connection setup': '连接设置',
+  'Choose the group and model MyAgents can use.':
+    '选择 MyAgents 可以使用的分组和模型。',
+  'Select a group': '选择分组',
+  'Select a model': '选择模型',
+  'Confirm and continue': '确认并继续',
+  'Cancel connection': '取消连接',
+  'Failed to complete the connection.': '无法完成连接。',
+  'Connection canceled.': '连接已取消。',
+  'The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.':
+    '连接器仅打开此页面并接收本地回调。密码和双重验证码必须由你自行输入。',
+}
+
+const agentConnectTraditionalChinese = {
+  ...agentConnectChinese,
+  'Connect MyAgents': '連接 MyAgents',
+  'The One connection': 'The One 連接',
+  'This secure flow configures a provider, a read-only MCP server, and the The One Gateway Skill in MyAgents.':
+    '此安全流程會在 MyAgents 中設定模型供應商、唯讀 MCP 伺服器和 The One Gateway Skill。',
+  'Start from the connector': '請從連接器啟動',
+  'The One connector needs a request ID. Download it and run one of these commands to start the connection.':
+    'The One 連接器需要請求 ID。下載後執行以下任一命令以開始連接。',
+  'Download connector for Windows': '下載 Windows 連接器',
+  'Download connector for macOS': '下載 macOS 連接器',
+  'Sign in to continue': '登入以繼續',
+  'Sign in on this official page, choose a group and model, then confirm the connection.':
+    '請在此官方頁面登入，選擇群組和模型，然後確認連接。',
+  'Your browser will return to the local connector.':
+    '瀏覽器將返回本機連接器。',
+  'Loading connection options...': '正在載入連接選項…',
+  'The connection request could not be loaded.': '無法載入連接請求。',
+  'No eligible models are currently available for this account.':
+    '此帳戶目前沒有可用模型。',
+  'Contact the site administrator if you need access to a model group.':
+    '如需存取模型群組，請聯絡網站管理員。',
+  'Connection setup': '連接設定',
+  'Choose the group and model MyAgents can use.':
+    '選擇 MyAgents 可以使用的群組和模型。',
+  'Select a group': '選擇群組',
+  'Select a model': '選擇模型',
+  'Confirm and continue': '確認並繼續',
+  'Cancel connection': '取消連接',
+  'Failed to complete the connection.': '無法完成連接。',
+  'Connection canceled.': '連接已取消。',
+  'The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.':
+    '連接器只會開啟此頁面並接收本機回呼。密碼和雙重驗證碼必須由你自行輸入。',
+}
+
+for (const locale of Object.keys(newKeys)) {
+  let translations = agentConnectEnglish
+  if (locale === 'zh') {
+    translations = agentConnectChinese
+  } else if (locale === 'zh-TW') {
+    translations = agentConnectTraditionalChinese
+  }
+  newKeys[locale] = {
+    ...newKeys[locale],
+    ...translations,
+  }
+}
+
 async function main() {
   for (const [locale, translations] of Object.entries(newKeys)) {
     const filename = path.join(localesDir, `${locale}.json`)
