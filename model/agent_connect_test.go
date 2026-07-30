@@ -69,6 +69,32 @@ func TestAgentConnectPairingBootstrapRequiresS256WithoutLoopbackFields(t *testin
 	}
 }
 
+func TestAgentConnectHermesSkillBootstrapUsesThePairingFlow(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&AgentConnectRequest{}))
+	challenge := strings.Repeat("a", 43)
+
+	err := validateAgentConnectBootstrap(
+		"hermes-skill",
+		"",
+		challenge,
+		"S256",
+		"",
+	)
+	require.NoError(t, err)
+
+	_, request, err := CreateAgentConnectRequest(AgentConnectRequestCreate{
+		ClientKind:          "hermes-skill",
+		CodeChallenge:       challenge,
+		CodeChallengeMethod: "S256",
+	})
+	require.NoError(t, err)
+	assert.True(t, request.PairingMode)
+
+	err = validateAgentConnectBootstrap("unknown-skill", "", challenge, "S256", "")
+	require.Error(t, err)
+}
+
 func TestAgentConnectPairingExchangeWaitsForApprovalAndIssuesOneToken(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.AutoMigrate(&AgentConnectRequest{}))

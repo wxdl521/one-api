@@ -232,3 +232,49 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	assert.Equal(t, "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip", exchanged.Skill.Source)
 	assert.Equal(t, "1.1.0", exchanged.Skill.Version)
 }
+
+func TestAgentConnectHermesPairingReturnsHermesUsageSkill(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.AgentConnectRequest{}, &model.Token{}))
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     "default",
+		Model:     "agent-connect-hermes-model",
+		ChannelId: 1,
+		Enabled:   true,
+	}).Error)
+
+	verifier := strings.Repeat("v", 43)
+	verifierHash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(verifierHash[:])
+	createContext, createRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/agent-connect/pairings", map[string]string{
+		"client_kind":           "hermes-skill",
+		"code_challenge":        challenge,
+		"code_challenge_method": "S256",
+	}, 0)
+	CreateAgentConnectPairing(createContext)
+	createResponse := decodeAPIResponse(t, createRecorder)
+	require.True(t, createResponse.Success)
+	var created agentConnectPairingCreateResponse
+	require.NoError(t, common.Unmarshal(createResponse.Data, &created))
+
+	authorizeContext, _ := newAuthenticatedContext(t, http.MethodPost, "/api/agent-connect/requests/"+created.RequestID+"/authorize", map[string]string{
+		"group": "default",
+		"model": "agent-connect-hermes-model",
+	}, 42)
+	authorizeContext.Params = gin.Params{{Key: "request_id", Value: created.RequestID}}
+	authorizeContext.Set("group", "default")
+	AuthorizeAgentConnectRequest(authorizeContext)
+
+	exchangeContext, exchangeRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/agent-connect/pairings/"+created.RequestID+"/exchange", map[string]string{
+		"code_verifier": verifier,
+	}, 0)
+	exchangeContext.Params = gin.Params{{Key: "request_id", Value: created.RequestID}}
+	ExchangeAgentConnectPairing(exchangeContext)
+	exchangeResponse := decodeAPIResponse(t, exchangeRecorder)
+	require.True(t, exchangeResponse.Success)
+	var exchanged agentConnectPairingExchangeResponse
+	require.NoError(t, common.Unmarshal(exchangeResponse.Data, &exchanged))
+	assert.Equal(t, "agent-connect-hermes-model", exchanged.Model)
+	assert.Equal(t, "https://the-one.bolierxiang.cn/skills/hermes/the-one-gateway/SKILL.md", exchanged.Skill.Source)
+	assert.NotEmpty(t, exchanged.APIKey)
+}

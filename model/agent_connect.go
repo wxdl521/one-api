@@ -20,6 +20,7 @@ import (
 const (
 	agentConnectClientMyAgents      = "myagents"
 	agentConnectClientMyAgentsSkill = "myagents-skill"
+	agentConnectClientHermesSkill   = "hermes-skill"
 	agentConnectPKCES256            = "S256"
 
 	AgentConnectRequestLifetime = 10 * time.Minute
@@ -82,7 +83,7 @@ func validateAgentConnectBootstrap(clientKind string, redirectURI string, codeCh
 	if err := validateAgentConnectPKCE(codeChallenge, codeChallengeMethod); err != nil {
 		return err
 	}
-	if clientKind == agentConnectClientMyAgentsSkill {
+	if IsAgentConnectPairingClient(clientKind) {
 		if redirectURI != "" || state != "" {
 			return errors.New("pairing requests must not include redirect URI or state")
 		}
@@ -159,7 +160,7 @@ func CreateAgentConnectRequest(input AgentConnectRequestCreate) (string, *AgentC
 	request := &AgentConnectRequest{
 		RequestHash:   agentConnectValueHash("request", requestID),
 		ClientKind:    input.ClientKind,
-		PairingMode:   input.ClientKind == agentConnectClientMyAgentsSkill,
+		PairingMode:   IsAgentConnectPairingClient(input.ClientKind),
 		RedirectURI:   input.RedirectURI,
 		State:         input.State,
 		CodeChallenge: input.CodeChallenge,
@@ -170,6 +171,12 @@ func CreateAgentConnectRequest(input AgentConnectRequestCreate) (string, *AgentC
 		return "", nil, err
 	}
 	return requestID, request, nil
+}
+
+// IsAgentConnectPairingClient reports whether a client kind uses the Skill
+// pairing flow rather than the loopback callback flow.
+func IsAgentConnectPairingClient(clientKind string) bool {
+	return clientKind == agentConnectClientMyAgentsSkill || clientKind == agentConnectClientHermesSkill
 }
 
 func GetAgentConnectRequest(requestID string) (*AgentConnectRequest, error) {
@@ -294,10 +301,19 @@ func ExchangeAgentConnectRequest(requestID string, authorizationCode string, ver
 // ExchangeAgentConnectPairingRequest completes a Skill pairing without ever
 // returning the browser authorization code to the local agent.
 func ExchangeAgentConnectPairingRequest(requestID string, verifier string) (*Token, error) {
+	issuedToken, _, err := ExchangeAgentConnectPairingManifest(requestID, verifier)
+	return issuedToken, err
+}
+
+// ExchangeAgentConnectPairingManifest returns the issued token with the client
+// kind that created the request, so callers can use only that client's public
+// configuration instructions.
+func ExchangeAgentConnectPairingManifest(requestID string, verifier string) (*Token, string, error) {
 	if requestID == "" || verifier == "" {
-		return nil, ErrAgentConnectInvalid
+		return nil, "", ErrAgentConnectInvalid
 	}
 	var issuedToken *Token
+	var clientKind string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var request AgentConnectRequest
 		if err := lockForUpdate(tx).
@@ -324,12 +340,13 @@ func ExchangeAgentConnectPairingRequest(requestID string, verifier string) (*Tok
 		}
 		var err error
 		issuedToken, err = issueAgentConnectToken(tx, &request, now)
+		clientKind = request.ClientKind
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return issuedToken, nil
+	return issuedToken, clientKind, nil
 }
 
 func issueAgentConnectToken(tx *gorm.DB, request *AgentConnectRequest, now time.Time) (*Token, error) {

@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	agentConnectSkillName    = "the-one-gateway"
-	agentConnectSkillVersion = "1.1.0"
-	agentConnectSkillSource  = "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip"
+	agentConnectSkillName           = "the-one-gateway"
+	agentConnectSkillVersion        = "1.1.0"
+	agentConnectMyAgentsSkillSource = "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip"
+	agentConnectHermesSkillSource   = "https://the-one.bolierxiang.cn/skills/hermes/the-one-gateway/SKILL.md"
 )
 
 type createAgentConnectRequest struct {
@@ -37,6 +38,7 @@ type exchangeAgentConnectRequest struct {
 }
 
 type createAgentConnectPairingRequest struct {
+	ClientKind          string `json:"client_kind"`
 	CodeChallenge       string `json:"code_challenge"`
 	CodeChallengeMethod string `json:"code_challenge_method"`
 }
@@ -76,8 +78,16 @@ func CreateAgentConnectPairing(c *gin.Context) {
 		writeAgentConnectError(c, model.ErrAgentConnectInvalid)
 		return
 	}
+	clientKind := input.ClientKind
+	if clientKind == "" {
+		clientKind = "myagents-skill"
+	}
+	if !model.IsAgentConnectPairingClient(clientKind) {
+		writeAgentConnectError(c, model.ErrAgentConnectInvalid)
+		return
+	}
 	requestID, request, err := model.CreateAgentConnectRequest(model.AgentConnectRequestCreate{
-		ClientKind:          "myagents-skill",
+		ClientKind:          clientKind,
 		CodeChallenge:       input.CodeChallenge,
 		CodeChallengeMethod: input.CodeChallengeMethod,
 	})
@@ -171,7 +181,7 @@ func ExchangeAgentConnectRequest(c *gin.Context) {
 		writeAgentConnectError(c, err)
 		return
 	}
-	writeAgentConnectManifest(c, token)
+	writeAgentConnectManifest(c, token, agentConnectMyAgentsSkillSource)
 }
 
 func ExchangeAgentConnectPairing(c *gin.Context) {
@@ -180,7 +190,7 @@ func ExchangeAgentConnectPairing(c *gin.Context) {
 		writeAgentConnectError(c, model.ErrAgentConnectInvalid)
 		return
 	}
-	token, err := model.ExchangeAgentConnectPairingRequest(c.Param("request_id"), input.CodeVerifier)
+	token, clientKind, err := model.ExchangeAgentConnectPairingManifest(c.Param("request_id"), input.CodeVerifier)
 	if errors.Is(err, model.ErrAgentConnectNotAuthorized) {
 		common.ApiSuccess(c, gin.H{"pending": true})
 		return
@@ -189,10 +199,10 @@ func ExchangeAgentConnectPairing(c *gin.Context) {
 		writeAgentConnectError(c, err)
 		return
 	}
-	writeAgentConnectManifest(c, token)
+	writeAgentConnectManifest(c, token, agentConnectSkillSourceForClient(clientKind))
 }
 
-func writeAgentConnectManifest(c *gin.Context, token *model.Token) {
+func writeAgentConnectManifest(c *gin.Context, token *model.Token, skillSource string) {
 	common.ApiSuccess(c, gin.H{
 		"api_key":    token.Key,
 		"expires_at": token.ExpiredTime,
@@ -202,9 +212,16 @@ func writeAgentConnectManifest(c *gin.Context, token *model.Token) {
 		"skill": gin.H{
 			"name":    agentConnectSkillName,
 			"version": agentConnectSkillVersion,
-			"source":  agentConnectSkillSource,
+			"source":  skillSource,
 		},
 	})
+}
+
+func agentConnectSkillSourceForClient(clientKind string) string {
+	if clientKind == "hermes-skill" {
+		return agentConnectHermesSkillSource
+	}
+	return agentConnectMyAgentsSkillSource
 }
 
 func writeAgentConnectError(c *gin.Context, err error) {

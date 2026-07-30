@@ -11,6 +11,8 @@ func SetSkillRouter(router *gin.Engine) {
 	router.GET("/skills/myagents/SKILL.md", serveSkill(agentintegrations.MyAgentsPairingSkill))
 	router.GET("/skills/myagents/the-one-gateway/SKILL.md", serveSkill(agentintegrations.MyAgentsGatewaySkill))
 	router.GET("/skills/myagents/the-one-gateway.zip", serveGatewaySkillArchive)
+	router.GET("/skills/hermes/SKILL.md", serveSkill(agentintegrations.HermesPairingSkill))
+	router.GET("/skills/hermes/the-one-gateway/SKILL.md", serveSkill(agentintegrations.HermesGatewaySkill))
 }
 
 func serveGatewaySkillArchive(c *gin.Context) {

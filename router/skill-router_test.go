@@ -72,3 +72,29 @@ func TestOnboardingSkillDoesNotInstructExecutableOrCredentialDisclosure(t *testi
 	assert.Contains(t, content, "never inspect, copy, print, log, or disclose")
 	assert.Contains(t, content, "do not change the current default provider")
 }
+
+func TestHermesSkillsArePublicAndPreserveTheDefaultModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetSkillRouter(engine)
+
+	for path, expectedName := range map[string]string{
+		"/skills/hermes/SKILL.md":                 "name: the-one-hermes-pairing",
+		"/skills/hermes/the-one-gateway/SKILL.md": "name: the-one-gateway",
+	} {
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusOK, recorder.Code)
+		assert.True(t, strings.HasPrefix(recorder.Header().Get("Content-Type"), "text/markdown"))
+		assert.Contains(t, recorder.Body.String(), expectedName)
+	}
+
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/skills/hermes/SKILL.md", nil))
+	content := strings.ToLower(recorder.Body.String())
+	assert.Contains(t, content, "do not change the current default model")
+	assert.Contains(t, content, "the_one_api_key")
+	for _, forbidden := range []string{"invoke-webrequest", "curl", ".exe", "the-one-connect", "authorization: bearer"} {
+		assert.NotContains(t, content, forbidden)
+	}
+}

@@ -14,6 +14,12 @@ var MyAgentsPairingSkill string
 //go:embed myagents/the-one-gateway/SKILL.md
 var MyAgentsGatewaySkill string
 
+//go:embed hermes/the-one-hermes-pairing/SKILL.md
+var HermesPairingSkill string
+
+//go:embed hermes/the-one-gateway/SKILL.md
+var HermesGatewaySkill string
+
 // MyAgentsGatewaySkillArchive packages the usage Skill in the directory layout
 // accepted by MyAgents' built-in Skill installer.
 func MyAgentsGatewaySkillArchive() ([]byte, error) {
