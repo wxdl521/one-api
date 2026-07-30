@@ -61,6 +61,10 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import {
+  DirectPaymentSettingsSection,
+  type DirectPaymentSettingsValues,
+} from './direct-payment-settings-section'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -201,6 +205,7 @@ type PaymentSettingsSectionProps = {
   waffoPancakeDefaultValues: WaffoPancakeSettingsValues
   waffoPancakeProvisionedStoreID?: string
   waffoPancakeProvisionedProductID?: string
+  directPaymentDefaultValues: DirectPaymentSettingsValues
   complianceDefaults: PaymentComplianceDefaults
 }
 
@@ -219,6 +224,7 @@ export function PaymentSettingsSection({
   waffoPancakeDefaultValues,
   waffoPancakeProvisionedStoreID,
   waffoPancakeProvisionedProductID,
+  directPaymentDefaultValues,
   complianceDefaults,
 }: PaymentSettingsSectionProps) {
   const { t } = useTranslation()
@@ -877,13 +883,17 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[44rem] grid-cols-6'>
+              <TabsList className='grid min-w-[58rem] grid-cols-8'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
                 <TabsTrigger value='waffo'>Waffo</TabsTrigger>
+                <TabsTrigger value='alipay'>{t('Official Alipay')}</TabsTrigger>
+                <TabsTrigger value='wechat'>
+                  {t('Official WeChat Pay')}
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -1624,6 +1634,20 @@ export function PaymentSettingsSection({
                 onValueChange={setWaffoValue}
                 payMethods={waffoPayMethods}
                 onPayMethodsChange={setWaffoPayMethods}
+              />
+            </TabsContent>
+
+            <TabsContent value='alipay' className={paymentTabContentClassName}>
+              <DirectPaymentSettingsSection
+                defaults={directPaymentDefaultValues}
+                provider='alipay'
+              />
+            </TabsContent>
+
+            <TabsContent value='wechat' className={paymentTabContentClassName}>
+              <DirectPaymentSettingsSection
+                defaults={directPaymentDefaultValues}
+                provider='wechat'
               />
             </TabsContent>
           </Tabs>

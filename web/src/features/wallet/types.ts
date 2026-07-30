@@ -59,6 +59,21 @@ export type WaffoPancakePaymentResponse = ApiResponse<
     }
   | string
 >
+export type AlipayDirectPaymentResponse = ApiResponse<{
+  trade_no: string
+  gateway_url: string
+  params: Record<string, string>
+}>
+export type WechatNativePaymentResponse = ApiResponse<{
+  trade_no: string
+  code_url: string
+  expires_at: number
+}>
+export type TopupStatusResponse = ApiResponse<{
+  trade_no: string
+  status: TopupStatus
+  expires_at: number
+}>
 
 /**
  * Creem product configuration
@@ -148,6 +163,10 @@ export interface TopupInfo {
   waffo_min_topup?: number
   /** Whether Waffo Pancake topup is enabled */
   enable_waffo_pancake_topup?: boolean
+  /** Whether official Alipay direct payment is available */
+  enable_alipay_direct_topup?: boolean
+  /** Whether official WeChat Native payment is available */
+  enable_wechat_native_topup?: boolean
   /** Minimum topup amount for Waffo Pancake */
   waffo_pancake_min_topup?: number
   /** Whether redemption code usage is enabled */
@@ -247,7 +266,7 @@ export interface UserWalletData {
 /**
  * Topup record status
  */
-export type TopupStatus = 'success' | 'pending' | 'expired'
+export type TopupStatus = 'success' | 'pending' | 'failed' | 'expired'
 
 /**
  * Topup billing record

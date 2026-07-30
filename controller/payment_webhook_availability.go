@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"net/url"
 	"strings"
 
+	"github.com/QuantumNous/the-one/service"
 	"github.com/QuantumNous/the-one/setting"
 	"github.com/QuantumNous/the-one/setting/operation_setting"
 )
@@ -107,4 +109,38 @@ func isEpayWebhookConfigured() bool {
 
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
+}
+
+func isAlipayTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() || !setting.AlipayEnabled || !hasSecurePaymentCallback() {
+		return false
+	}
+	return strings.TrimSpace(setting.AlipayAppID) != "" &&
+		strings.TrimSpace(setting.AlipaySellerID) != "" &&
+		strings.TrimSpace(setting.AlipayAppPrivateKey) != "" &&
+		strings.TrimSpace(setting.AlipayPublicKey) != ""
+}
+
+func isAlipayWebhookEnabled() bool {
+	return isAlipayTopUpEnabled()
+}
+
+func isWechatPayTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() || !setting.WeChatPayEnabled || !hasSecurePaymentCallback() {
+		return false
+	}
+	return strings.TrimSpace(setting.WeChatPayAppID) != "" &&
+		strings.TrimSpace(setting.WeChatPayMerchantID) != "" &&
+		strings.TrimSpace(setting.WeChatPayMerchantCertificateSerial) != "" &&
+		strings.TrimSpace(setting.WeChatPayMerchantPrivateKey) != "" &&
+		len(setting.WeChatPayAPIv3Key) == 32
+}
+
+func isWechatPayWebhookEnabled() bool {
+	return isWechatPayTopUpEnabled()
+}
+
+func hasSecurePaymentCallback() bool {
+	callbackAddress, err := url.Parse(service.GetCallbackAddress())
+	return err == nil && callbackAddress.Scheme == "https" && callbackAddress.Host != ""
 }

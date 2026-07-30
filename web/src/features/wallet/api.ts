@@ -39,6 +39,9 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  AlipayDirectPaymentResponse,
+  WechatNativePaymentResponse,
+  TopupStatusResponse,
 } from './types'
 
 // ============================================================================
@@ -178,6 +181,36 @@ export async function requestWaffoPancakePayment(
   const res = await api.post('/api/user/waffo-pancake/pay', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
+  return res.data
+}
+
+export async function requestAlipayDirectPayment(request: {
+  amount: number
+}): Promise<AlipayDirectPaymentResponse> {
+  const res = await api.post('/api/user/alipay/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function requestWechatNativePayment(request: {
+  amount: number
+}): Promise<WechatNativePaymentResponse> {
+  const res = await api.post('/api/user/wechat/native/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function getTopupStatus(
+  tradeNo: string
+): Promise<TopupStatusResponse> {
+  const res = await api.get(
+    `/api/user/topup/${encodeURIComponent(tradeNo)}/status`,
+    {
+      skipBusinessError: true,
+    } as Record<string, unknown>
+  )
   return res.data
 }
 

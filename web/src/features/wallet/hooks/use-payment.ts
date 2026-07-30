@@ -27,12 +27,14 @@ import {
   calculateWaffoPancakeAmount,
   requestPayment,
   requestStripePayment,
+  requestAlipayDirectPayment,
   isApiSuccess,
 } from '../api'
 import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  isAlipayDirectPayment,
   submitPaymentForm,
 } from '../lib'
 import type { AmountRequest, AmountResponse } from '../types'
@@ -112,6 +114,7 @@ export function usePayment() {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
+        const isAlipayDirect = isAlipayDirectPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
         const response = isStripe
@@ -119,10 +122,12 @@ export function usePayment() {
               amount,
               payment_method: 'stripe',
             })
-          : await requestPayment({
-              amount,
-              payment_method: paymentType,
-            })
+          : isAlipayDirect
+            ? await requestAlipayDirectPayment({ amount })
+            : await requestPayment({
+                amount,
+                payment_method: paymentType,
+              })
 
         if (!isApiSuccess(response)) {
           toast.error(response.message || i18next.t('Payment request failed'))
@@ -130,14 +135,32 @@ export function usePayment() {
         }
 
         // Handle Stripe payment
-        if (isStripe && response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
+        const responseData = response.data as
+          | Record<string, unknown>
+          | undefined
+
+        if (isStripe && typeof responseData?.pay_link === 'string') {
+          window.open(responseData.pay_link, '_blank')
           toast.success(i18next.t('Redirecting to payment page...'))
           return true
         }
 
         // Handle non-Stripe payment
-        if (!isStripe && response.data) {
+        if (
+          isAlipayDirect &&
+          typeof responseData?.gateway_url === 'string' &&
+          responseData.params &&
+          typeof responseData.params === 'object'
+        ) {
+          submitPaymentForm(
+            responseData.gateway_url,
+            responseData.params as Record<string, string>
+          )
+          toast.success(i18next.t('Redirecting to payment page...'))
+          return true
+        }
+
+        if (!isStripe && !isAlipayDirect && response.data) {
           const url = (response as unknown as { url?: string }).url
           if (url) {
             submitPaymentForm(url, response.data)

@@ -173,6 +173,58 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	require.False(t, isEpayWebhookEnabled())
 }
 
+func TestOfficialDirectPaymentRequiresCompleteCredentialsAndHTTPSCallback(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalCallback := operation_setting.CustomCallbackAddress
+	originalAlipayEnabled := setting.AlipayEnabled
+	originalAlipayAppID := setting.AlipayAppID
+	originalAlipaySellerID := setting.AlipaySellerID
+	originalAlipayPrivateKey := setting.AlipayAppPrivateKey
+	originalAlipayPublicKey := setting.AlipayPublicKey
+	originalWechatEnabled := setting.WeChatPayEnabled
+	originalWechatAppID := setting.WeChatPayAppID
+	originalWechatMerchantID := setting.WeChatPayMerchantID
+	originalWechatSerial := setting.WeChatPayMerchantCertificateSerial
+	originalWechatPrivateKey := setting.WeChatPayMerchantPrivateKey
+	originalWechatAPIv3Key := setting.WeChatPayAPIv3Key
+	t.Cleanup(func() {
+		operation_setting.CustomCallbackAddress = originalCallback
+		setting.AlipayEnabled = originalAlipayEnabled
+		setting.AlipayAppID = originalAlipayAppID
+		setting.AlipaySellerID = originalAlipaySellerID
+		setting.AlipayAppPrivateKey = originalAlipayPrivateKey
+		setting.AlipayPublicKey = originalAlipayPublicKey
+		setting.WeChatPayEnabled = originalWechatEnabled
+		setting.WeChatPayAppID = originalWechatAppID
+		setting.WeChatPayMerchantID = originalWechatMerchantID
+		setting.WeChatPayMerchantCertificateSerial = originalWechatSerial
+		setting.WeChatPayMerchantPrivateKey = originalWechatPrivateKey
+		setting.WeChatPayAPIv3Key = originalWechatAPIv3Key
+	})
+
+	operation_setting.CustomCallbackAddress = "http://api.example.com"
+	setting.AlipayEnabled = true
+	setting.AlipayAppID = "2026000000000000"
+	setting.AlipaySellerID = "2088000000000000"
+	setting.AlipayAppPrivateKey = "private"
+	setting.AlipayPublicKey = "public"
+	assert.False(t, isAlipayTopUpEnabled())
+
+	operation_setting.CustomCallbackAddress = "https://api.example.com"
+	assert.True(t, isAlipayTopUpEnabled())
+
+	setting.WeChatPayEnabled = true
+	setting.WeChatPayAppID = "wx1234567890abcdef"
+	setting.WeChatPayMerchantID = "1900000001"
+	setting.WeChatPayMerchantCertificateSerial = "1234567890"
+	setting.WeChatPayMerchantPrivateKey = "private"
+	setting.WeChatPayAPIv3Key = "12345678901234567890123456789012"
+	assert.True(t, isWechatPayTopUpEnabled())
+
+	setting.WeChatPayAPIv3Key = "short"
+	assert.False(t, isWechatPayTopUpEnabled())
+}
+
 func TestRequestEpay_RejectsDisabledGatewayBeforeParsingPaymentRequest(t *testing.T) {
 	paymentSetting := operation_setting.GetPaymentSetting()
 	originalConfirmed := paymentSetting.ComplianceConfirmed

@@ -12,16 +12,19 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Id                 int     `json:"id"`
+	UserId             int     `json:"user_id" gorm:"index"`
+	Amount             int64   `json:"amount"`
+	Money              float64 `json:"money"`
+	PaymentAmountCents int64   `json:"payment_amount_cents"`
+	TradeNo            string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	ProviderTradeNo    string  `json:"provider_trade_no" gorm:"type:varchar(255);index"`
+	PaymentMethod      string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider    string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	CreateTime         int64   `json:"create_time"`
+	ExpireTime         int64   `json:"expire_time"`
+	CompleteTime       int64   `json:"complete_time"`
+	Status             string  `json:"status"`
 }
 
 const (
@@ -30,6 +33,8 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
+	PaymentMethodAlipayDirect = "alipay_direct"
+	PaymentMethodWechatNative = "wechat_native"
 )
 
 const (
@@ -39,6 +44,8 @@ const (
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderBalance      = "balance"
+	PaymentProviderAlipay       = "alipay"
+	PaymentProviderWechatPay    = "wechat_pay"
 )
 
 var (
@@ -661,6 +668,91 @@ func RechargeEpay(tradeNo string, paymentMethod string, paidAmount string, calle
 	}
 	if wasCredited {
 		RecordTopupLog(userID, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), money), callerIP, method, PaymentProviderEpay)
+	}
+	return nil
+}
+
+// RechargeOfficialPayment completes an Alipay or WeChat Pay order after the
+// controller has verified its provider signature and merchant identity. Its
+// transaction covers the status transition and quota credit so webhooks and
+// order-status queries cannot credit the same order twice.
+func RechargeOfficialPayment(tradeNo string, expectedProvider string, providerTradeNo string, paidAmountCents int64, callerIP string) error {
+	if tradeNo == "" || providerTradeNo == "" || paidAmountCents <= 0 {
+		return errors.New("invalid official payment result")
+	}
+
+	expectedMethod := ""
+	switch expectedProvider {
+	case PaymentProviderAlipay:
+		expectedMethod = PaymentMethodAlipayDirect
+	case PaymentProviderWechatPay:
+		expectedMethod = PaymentMethodWechatNative
+	default:
+		return ErrPaymentMethodMismatch
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	var (
+		userID      int
+		quotaToAdd  int
+		money       float64
+		method      string
+		wasCredited bool
+	)
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != expectedProvider || topUp.PaymentMethod != expectedMethod {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.PaymentAmountCents <= 0 || topUp.PaymentAmountCents != paidAmountCents {
+			return ErrPaymentAmountMismatch
+		}
+		if topUp.ProviderTradeNo != "" && topUp.ProviderTradeNo != providerTradeNo {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+
+		calculatedQuota, clamp := common.QuotaFromDecimalChecked(
+			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+		)
+		if clamp != nil || calculatedQuota <= 0 {
+			return errors.New("invalid topup quota")
+		}
+
+		topUp.ProviderTradeNo = providerTradeNo
+		topUp.Status = common.TopUpStatusSuccess
+		topUp.CompleteTime = common.GetTimestamp()
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", calculatedQuota)).Error; err != nil {
+			return err
+		}
+
+		userID = topUp.UserId
+		quotaToAdd = calculatedQuota
+		money = topUp.Money
+		method = topUp.PaymentMethod
+		wasCredited = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if wasCredited {
+		RecordTopupLog(userID, fmt.Sprintf("官方支付充值成功，充值金额: %v，支付金额：%.2f", logger.FormatQuota(quotaToAdd), money), callerIP, method, expectedProvider)
 	}
 	return nil
 }

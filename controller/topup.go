@@ -26,7 +26,7 @@ func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -96,12 +96,34 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	enableAlipayDirect := isAlipayTopUpEnabled()
+	if enableAlipayDirect {
+		payMethods = append(payMethods, map[string]string{
+			"name":      "Alipay (Official)",
+			"type":      model.PaymentMethodAlipayDirect,
+			"color":     "#1677FF",
+			"min_topup": strconv.FormatInt(getMinTopup(), 10),
+		})
+	}
+
+	enableWechatNative := isWechatPayTopUpEnabled()
+	if enableWechatNative {
+		payMethods = append(payMethods, map[string]string{
+			"name":      "WeChat Pay (QR)",
+			"type":      model.PaymentMethodWechatNative,
+			"color":     "#07C160",
+			"min_topup": strconv.FormatInt(getMinTopup(), 10),
+		})
+	}
+
 	data := gin.H{
 		"enable_online_topup":              isEpayTopUpEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_alipay_direct_topup":       enableAlipayDirect,
+		"enable_wechat_native_topup":       enableWechatNative,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,

@@ -93,10 +93,20 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.WAFFO_PANCAKE
 }
 
+export function isAlipayDirectPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ALIPAY_DIRECT
+}
+
+export function isWechatNativePayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.WECHAT_NATIVE
+}
+
 export interface PaymentProcessors {
   regular: (topupAmount: number, paymentType: string) => Promise<boolean>
   waffo: (topupAmount: number, payMethodIndex: number) => Promise<boolean>
   waffoPancake: (topupAmount: number) => Promise<boolean>
+  alipayDirect: (topupAmount: number) => Promise<boolean>
+  wechatNative: (topupAmount: number) => Promise<boolean>
 }
 
 export async function dispatchSelectedPayment(
@@ -114,6 +124,14 @@ export async function dispatchSelectedPayment(
 
   if (isWaffoPancakePayment(paymentMethod.type)) {
     return processors.waffoPancake(topupAmount)
+  }
+
+  if (isAlipayDirectPayment(paymentMethod.type)) {
+    return processors.alipayDirect(topupAmount)
+  }
+
+  if (isWechatNativePayment(paymentMethod.type)) {
+    return processors.wechatNative(topupAmount)
   }
 
   return processors.regular(topupAmount, paymentMethod.type)
@@ -156,6 +174,13 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
   }
 
   if (topupInfo.enable_online_topup) {
+    return topupInfo.min_topup
+  }
+
+  if (
+    topupInfo.enable_alipay_direct_topup ||
+    topupInfo.enable_wechat_native_topup
+  ) {
     return topupInfo.min_topup
   }
 

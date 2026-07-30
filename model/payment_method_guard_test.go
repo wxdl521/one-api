@@ -131,6 +131,83 @@ func TestRechargeEpay_RejectsMismatchedPaidAmount(t *testing.T) {
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 121))
 }
 
+func TestRechargeOfficialPayment_CreditsVerifiedOrderOnlyOnce(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 130, 0)
+	topUp := &TopUp{
+		UserId:             130,
+		Amount:             2,
+		Money:              7.30,
+		PaymentAmountCents: 730,
+		TradeNo:            "alipay-direct-idempotency",
+		PaymentMethod:      PaymentMethodAlipayDirect,
+		PaymentProvider:    PaymentProviderAlipay,
+		Status:             common.TopUpStatusPending,
+		CreateTime:         time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	require.NoError(t, RechargeOfficialPayment(
+		"alipay-direct-idempotency",
+		PaymentProviderAlipay,
+		"202607302200123456789",
+		730,
+		"127.0.0.1",
+	))
+	require.NoError(t, RechargeOfficialPayment(
+		"alipay-direct-idempotency",
+		PaymentProviderAlipay,
+		"202607302200123456789",
+		730,
+		"127.0.0.1",
+	))
+
+	stored := GetTopUpByTradeNo("alipay-direct-idempotency")
+	require.NotNil(t, stored)
+	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
+	assert.Equal(t, "202607302200123456789", stored.ProviderTradeNo)
+	assert.Equal(t, int(common.QuotaPerUnit*2), getUserQuotaForPaymentGuardTest(t, 130))
+}
+
+func TestRechargeOfficialPayment_RejectsWrongProviderOrAmount(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 131, 0)
+	topUp := &TopUp{
+		UserId:             131,
+		Amount:             2,
+		Money:              7.30,
+		PaymentAmountCents: 730,
+		TradeNo:            "wechat-native-guard",
+		PaymentMethod:      PaymentMethodWechatNative,
+		PaymentProvider:    PaymentProviderWechatPay,
+		Status:             common.TopUpStatusPending,
+		CreateTime:         time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	err := RechargeOfficialPayment(
+		"wechat-native-guard",
+		PaymentProviderAlipay,
+		"202607302200123456789",
+		730,
+		"127.0.0.1",
+	)
+	require.ErrorIs(t, err, ErrPaymentMethodMismatch)
+
+	err = RechargeOfficialPayment(
+		"wechat-native-guard",
+		PaymentProviderWechatPay,
+		"4200001234202607300000000000",
+		731,
+		"127.0.0.1",
+	)
+	require.ErrorIs(t, err, ErrPaymentAmountMismatch)
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, "wechat-native-guard"))
+	assert.Zero(t, getUserQuotaForPaymentGuardTest(t, 131))
+}
+
 func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T) {
 	testCases := []struct {
 		name                    string

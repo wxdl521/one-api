@@ -25,6 +25,8 @@ import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  isAlipayDirectPayment,
+  isWechatNativePayment,
 } from './payment'
 
 describe('payment type classification', () => {
@@ -34,6 +36,8 @@ describe('payment type classification', () => {
     assert.equal(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO_PANCAKE), true)
     assert.equal(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO), false)
     assert.equal(isStripePayment(PAYMENT_TYPES.STRIPE), true)
+    assert.equal(isAlipayDirectPayment(PAYMENT_TYPES.ALIPAY_DIRECT), true)
+    assert.equal(isWechatNativePayment(PAYMENT_TYPES.WECHAT_NATIVE), true)
   })
 })
 
@@ -57,6 +61,8 @@ describe('payment dispatch', () => {
           calls.push('pancake')
           return false
         },
+        alipayDirect: async () => false,
+        wechatNative: async () => false,
       }
     )
 
@@ -77,10 +83,57 @@ describe('payment dispatch', () => {
           return true
         },
         waffoPancake: async () => false,
+        alipayDirect: async () => false,
+        wechatNative: async () => false,
       }
     )
 
     assert.equal(success, false)
     assert.equal(called, false)
+  })
+
+  test('routes official payments without changing the Epay flow', async () => {
+    const calls: string[] = []
+    const processors = {
+      regular: async (_amount: number, type: string) => {
+        calls.push(`regular:${type}`)
+        return true
+      },
+      waffo: async () => false,
+      waffoPancake: async () => false,
+      alipayDirect: async () => {
+        calls.push('alipay-direct')
+        return true
+      },
+      wechatNative: async () => {
+        calls.push('wechat-native')
+        return true
+      },
+    }
+
+    await dispatchSelectedPayment(
+      { name: 'Alipay official', type: PAYMENT_TYPES.ALIPAY_DIRECT },
+      10,
+      null,
+      processors
+    )
+    await dispatchSelectedPayment(
+      { name: 'WeChat QR', type: PAYMENT_TYPES.WECHAT_NATIVE },
+      10,
+      null,
+      processors
+    )
+    await dispatchSelectedPayment(
+      { name: 'Epay Alipay', type: PAYMENT_TYPES.ALIPAY },
+      10,
+      null,
+      processors
+    )
+
+    assert.deepEqual(calls, [
+      'alipay-direct',
+      'wechat-native',
+      'regular:alipay',
+    ])
   })
 })

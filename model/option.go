@@ -81,6 +81,17 @@ func InitOptionMap() {
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
 	common.OptionMap["EpayKey"] = ""
+	common.OptionMap["AlipayEnabled"] = strconv.FormatBool(setting.AlipayEnabled)
+	common.OptionMap["AlipayAppID"] = setting.AlipayAppID
+	common.OptionMap["AlipaySellerID"] = setting.AlipaySellerID
+	common.OptionMap["AlipayAppPrivateKey"] = setting.AlipayAppPrivateKey
+	common.OptionMap["AlipayPublicKey"] = setting.AlipayPublicKey
+	common.OptionMap["WeChatPayEnabled"] = strconv.FormatBool(setting.WeChatPayEnabled)
+	common.OptionMap["WeChatPayAppID"] = setting.WeChatPayAppID
+	common.OptionMap["WeChatPayMerchantID"] = setting.WeChatPayMerchantID
+	common.OptionMap["WeChatPayMerchantCertificateSerial"] = setting.WeChatPayMerchantCertificateSerial
+	common.OptionMap["WeChatPayMerchantPrivateKey"] = setting.WeChatPayMerchantPrivateKey
+	common.OptionMap["WeChatPayAPIv3Key"] = setting.WeChatPayAPIv3Key
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
@@ -581,6 +592,28 @@ func updateOptionMap(key string, value string) (err error) {
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
+	case "AlipayEnabled":
+		setting.AlipayEnabled, _ = strconv.ParseBool(value)
+	case "AlipayAppID":
+		setting.AlipayAppID = value
+	case "AlipaySellerID":
+		setting.AlipaySellerID = value
+	case "AlipayAppPrivateKey":
+		setting.AlipayAppPrivateKey = value
+	case "AlipayPublicKey":
+		setting.AlipayPublicKey = value
+	case "WeChatPayEnabled":
+		setting.WeChatPayEnabled, _ = strconv.ParseBool(value)
+	case "WeChatPayAppID":
+		setting.WeChatPayAppID = value
+	case "WeChatPayMerchantID":
+		setting.WeChatPayMerchantID = value
+	case "WeChatPayMerchantCertificateSerial":
+		setting.WeChatPayMerchantCertificateSerial = value
+	case "WeChatPayMerchantPrivateKey":
+		setting.WeChatPayMerchantPrivateKey = value
+	case "WeChatPayAPIv3Key":
+		setting.WeChatPayAPIv3Key = value
 	}
 	return err
 }
