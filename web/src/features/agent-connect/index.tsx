@@ -43,7 +43,7 @@ import {
 } from './api'
 
 const RELEASE_BASE_URL =
-  'https://github.com/QuantumNous/the-one/releases/latest/download'
+  'https://github.com/wxdl521/one-api/releases/latest/download'
 const EMPTY_GROUPS: AgentConnectGroup[] = []
 const EMPTY_MODELS: string[] = []
 
