@@ -108,6 +108,41 @@ func TestAgentConnectPairingExchangeWaitsForApprovalAndIssuesOneToken(t *testing
 	assert.Equal(t, int64(1), count)
 }
 
+func TestAgentConnectPairingCanceledOrExpiredRequestsCannotIssueTokens(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&AgentConnectRequest{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&AgentConnectRequest{}).Error)
+
+	verifier := strings.Repeat("v", 43)
+	verifierHash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(verifierHash[:])
+	canceledRequestID, _, err := CreateAgentConnectRequest(AgentConnectRequestCreate{
+		ClientKind:          "myagents-skill",
+		CodeChallenge:       challenge,
+		CodeChallengeMethod: "S256",
+	})
+	require.NoError(t, err)
+	require.NoError(t, CancelAgentConnectRequest(canceledRequestID, 42))
+	_, err = ExchangeAgentConnectPairingRequest(canceledRequestID, verifier)
+	require.ErrorIs(t, err, ErrAgentConnectCanceled)
+
+	expiredRequestID, request, err := CreateAgentConnectRequest(AgentConnectRequestCreate{
+		ClientKind:          "myagents-skill",
+		CodeChallenge:       challenge,
+		CodeChallengeMethod: "S256",
+	})
+	require.NoError(t, err)
+	_, err = AuthorizeAgentConnectRequest(expiredRequestID, 42, "default", "gpt-4.1-mini")
+	require.NoError(t, err)
+	require.NoError(t, DB.Model(&AgentConnectRequest{}).Where("id = ?", request.Id).Update("expires_at", time.Now().Add(-time.Second)).Error)
+	_, err = ExchangeAgentConnectPairingRequest(expiredRequestID, verifier)
+	require.ErrorIs(t, err, ErrAgentConnectExpired)
+
+	var count int64
+	require.NoError(t, DB.Model(&Token{}).Where("user_id = ?", 42).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
 func TestAgentConnectExchangeIssuesOnlyOneLimitedNinetyDayToken(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.AutoMigrate(&AgentConnectRequest{}))

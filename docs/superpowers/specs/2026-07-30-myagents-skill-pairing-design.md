@@ -104,9 +104,9 @@ and the tagged source describe the same behavior.
 ## Data model and compatibility
 
 Pairing sessions extend the existing `agent_connect_requests` table rather than
-introducing a second authorization subsystem. A nullable pairing-mode marker is
-added with GORM-compatible migration behavior for SQLite, MySQL 5.7.8+, and
-PostgreSQL 9.6+. Existing loopback PKCE requests and the local
+introducing a second authorization subsystem. A pairing-mode boolean is added
+without a database default tag, using GORM-compatible migration behavior for
+SQLite, MySQL 5.7.8+, and PostgreSQL 9.6+. Existing loopback PKCE requests and the local
 `the-one-connect` CLI remain compatible.
 
 ## Tests and acceptance
@@ -123,3 +123,17 @@ PostgreSQL 9.6+. Existing loopback PKCE requests and the local
 - manual acceptance: a MyAgents agent receives the single instruction above,
   opens the official page, waits for the user's confirmation, configures the
   provider/MCP/usage Skill, and leaves the prior default provider unchanged.
+
+## Implementation verification
+
+- Implemented on `codex/harden-epay-topups` at `aef8431dc` without changing
+  GitHub `main` (`3be1e1734`).
+- Local verification passed at 2026-07-30T09:47:15Z:
+  `go test ./model ./service ./controller ./router ./middleware ./cmd/the-one-connect -count=1`,
+  `bun run typecheck`, and `bun run build` from `web/`.
+- Deployed image `the-one:next-aef8431d` at 2026-07-30T09:47:15Z. The prior
+  image is retained as stopped container `the-one-rollback-1bff0b58` for
+  immediate rollback.
+- Public verification passed for `https://the-one.bolierxiang.cn/` and
+  `https://the-one.bolierxiang.cn/skills/myagents/SKILL.md`; the Skill response
+  is `text/markdown; charset=utf-8` with `X-The-One-Skill-Version: 2026-07-30`.
