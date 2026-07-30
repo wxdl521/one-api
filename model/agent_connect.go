@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	agentConnectClientMyAgents = "myagents"
-	agentConnectPKCES256       = "S256"
+	agentConnectClientMyAgents      = "myagents"
+	agentConnectClientMyAgentsSkill = "myagents-skill"
+	agentConnectPKCES256            = "S256"
 
 	AgentConnectRequestLifetime = 10 * time.Minute
 	AgentConnectTokenLifetime   = 90 * 24 * time.Hour
@@ -48,6 +49,7 @@ type AgentConnectRequest struct {
 	Id                    int64      `json:"id" gorm:"primaryKey"`
 	RequestHash           string     `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
 	ClientKind            string     `json:"client_kind" gorm:"type:varchar(32);not null"`
+	PairingMode           bool       `json:"pairing_mode"`
 	RedirectURI           string     `json:"redirect_uri" gorm:"type:varchar(512);not null"`
 	State                 string     `json:"state" gorm:"type:varchar(128);not null"`
 	CodeChallenge         string     `json:"-" gorm:"type:varchar(128);not null"`
@@ -77,14 +79,17 @@ type AgentConnectRequestCreate struct {
 }
 
 func validateAgentConnectBootstrap(clientKind string, redirectURI string, codeChallenge string, codeChallengeMethod string, state string) error {
+	if err := validateAgentConnectPKCE(codeChallenge, codeChallengeMethod); err != nil {
+		return err
+	}
+	if clientKind == agentConnectClientMyAgentsSkill {
+		if redirectURI != "" || state != "" {
+			return errors.New("pairing requests must not include redirect URI or state")
+		}
+		return nil
+	}
 	if clientKind != agentConnectClientMyAgents {
 		return errors.New("unsupported agent connect client")
-	}
-	if codeChallengeMethod != agentConnectPKCES256 {
-		return errors.New("agent connect requires S256 PKCE")
-	}
-	if !isPKCEValue(codeChallenge) {
-		return errors.New("invalid PKCE code challenge")
 	}
 	if !isPKCEValue(state) {
 		return errors.New("invalid agent connect state")
@@ -109,6 +114,16 @@ func validateAgentConnectBootstrap(clientKind string, redirectURI string, codeCh
 	ip := net.ParseIP(parsedRedirectURI.Hostname())
 	if ip == nil || !ip.IsLoopback() {
 		return errors.New("redirect URI must use a loopback address")
+	}
+	return nil
+}
+
+func validateAgentConnectPKCE(codeChallenge string, codeChallengeMethod string) error {
+	if codeChallengeMethod != agentConnectPKCES256 {
+		return errors.New("agent connect requires S256 PKCE")
+	}
+	if !isPKCEValue(codeChallenge) {
+		return errors.New("invalid PKCE code challenge")
 	}
 	return nil
 }
@@ -144,6 +159,7 @@ func CreateAgentConnectRequest(input AgentConnectRequestCreate) (string, *AgentC
 	request := &AgentConnectRequest{
 		RequestHash:   agentConnectValueHash("request", requestID),
 		ClientKind:    input.ClientKind,
+		PairingMode:   input.ClientKind == agentConnectClientMyAgentsSkill,
 		RedirectURI:   input.RedirectURI,
 		State:         input.State,
 		CodeChallenge: input.CodeChallenge,
@@ -265,50 +281,97 @@ func ExchangeAgentConnectRequest(requestID string, authorizationCode string, ver
 			return ErrAgentConnectInvalidVerifier
 		}
 
-		var tokenCount int64
-		if err := tx.Model(&Token{}).Where("user_id = ?", request.UserId).Count(&tokenCount).Error; err != nil {
-			return err
-		}
-		if int(tokenCount) >= operation_setting.GetMaxUserTokens() {
-			return ErrAgentConnectTokenLimit
-		}
-		key, err := common.GenerateKey()
-		if err != nil {
-			return err
-		}
-		result := tx.Model(&AgentConnectRequest{}).
-			Where("id = ? AND status = ? AND expires_at > ?", request.Id, agentConnectStatusAuthorized, now).
-			Updates(map[string]any{
-				"status":      agentConnectStatusConsumed,
-				"consumed_at": now,
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return ErrAgentConnectConsumed
-		}
-		issuedToken = &Token{
-			UserId:             request.UserId,
-			Name:               "MyAgents connection",
-			Key:                key,
-			CreatedTime:        now.Unix(),
-			AccessedTime:       now.Unix(),
-			ExpiredTime:        now.Add(AgentConnectTokenLifetime).Unix(),
-			UnlimitedQuota:     true,
-			ModelLimitsEnabled: true,
-			ModelLimits:        request.Model,
-			Group:              request.Group,
-		}
-		if err := tx.Create(issuedToken).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&AgentConnectRequest{}).Where("id = ?", request.Id).Update("token_id", issuedToken.Id).Error; err != nil {
-			return err
-		}
-		return nil
+		var issueErr error
+		issuedToken, issueErr = issueAgentConnectToken(tx, &request, now)
+		return issueErr
 	})
 	if err != nil {
+		return nil, err
+	}
+	return issuedToken, nil
+}
+
+// ExchangeAgentConnectPairingRequest completes a Skill pairing without ever
+// returning the browser authorization code to the local agent.
+func ExchangeAgentConnectPairingRequest(requestID string, verifier string) (*Token, error) {
+	if requestID == "" || verifier == "" {
+		return nil, ErrAgentConnectInvalid
+	}
+	var issuedToken *Token
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var request AgentConnectRequest
+		if err := lockForUpdate(tx).
+			Where("request_hash = ?", agentConnectValueHash("request", requestID)).
+			First(&request).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentConnectInvalid
+			}
+			return err
+		}
+		if !request.PairingMode {
+			return ErrAgentConnectInvalid
+		}
+		now := time.Now()
+		if err := validateAuthorizedAgentConnectRequest(&request, now); err != nil {
+			return err
+		}
+		verifierHash := sha256.Sum256([]byte(verifier))
+		if subtle.ConstantTimeCompare(
+			[]byte(base64.RawURLEncoding.EncodeToString(verifierHash[:])),
+			[]byte(request.CodeChallenge),
+		) != 1 {
+			return ErrAgentConnectInvalidVerifier
+		}
+		var err error
+		issuedToken, err = issueAgentConnectToken(tx, &request, now)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return issuedToken, nil
+}
+
+func issueAgentConnectToken(tx *gorm.DB, request *AgentConnectRequest, now time.Time) (*Token, error) {
+	var tokenCount int64
+	if err := tx.Model(&Token{}).Where("user_id = ?", request.UserId).Count(&tokenCount).Error; err != nil {
+		return nil, err
+	}
+	if int(tokenCount) >= operation_setting.GetMaxUserTokens() {
+		return nil, ErrAgentConnectTokenLimit
+	}
+	key, err := common.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
+	result := tx.Model(&AgentConnectRequest{}).
+		Where("id = ? AND status = ? AND expires_at > ?", request.Id, agentConnectStatusAuthorized, now).
+		Updates(map[string]any{
+			"status":      agentConnectStatusConsumed,
+			"consumed_at": now,
+		})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, ErrAgentConnectConsumed
+	}
+	issuedToken := &Token{
+		UserId:             request.UserId,
+		Name:               "MyAgents connection",
+		Key:                key,
+		CreatedTime:        now.Unix(),
+		AccessedTime:       now.Unix(),
+		ExpiredTime:        now.Add(AgentConnectTokenLifetime).Unix(),
+		UnlimitedQuota:     true,
+		ModelLimitsEnabled: true,
+		ModelLimits:        request.Model,
+		Group:              request.Group,
+	}
+	if err := tx.Create(issuedToken).Error; err != nil {
+		return nil, err
+	}
+	if err := tx.Model(&AgentConnectRequest{}).Where("id = ?", request.Id).Update("token_id", issuedToken.Id).Error; err != nil {
 		return nil, err
 	}
 	return issuedToken, nil

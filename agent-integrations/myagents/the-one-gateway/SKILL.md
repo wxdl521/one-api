@@ -30,10 +30,11 @@ tool call, browser form, or chat message.
 
 ## Reconnect
 
-When the connection is expired, revoked, or unavailable, run the command
-returned by `the_one_reconnect` (normally `the-one-connect myagents --base-url
-<The One origin>`). The command opens the official authorization page; wait for
-the user to log in, select a group and model, and confirm access.
+When the connection is expired, revoked, or unavailable, read and follow the
+official pairing Skill at
+`https://the-one.bolierxiang.cn/skills/myagents/SKILL.md`. It opens the
+official authorization page; wait for the user to log in, select a group and
+model, and confirm access.
 
 The browser flow must remain user-operated. Never read, print, copy, store,
 auto-fill, submit, or request the user's password, two-factor code, session
@@ -42,4 +43,4 @@ arguments, screenshots, or error reports.
 
 ## Version
 
-`1.0.0`
+`1.1.0`

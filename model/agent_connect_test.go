@@ -28,6 +28,86 @@ func TestValidateAgentConnectBootstrapAcceptsStrictLoopbackPKCE(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestAgentConnectPairingBootstrapRequiresS256WithoutLoopbackFields(t *testing.T) {
+	challenge := strings.Repeat("a", 43)
+
+	err := validateAgentConnectBootstrap(
+		"myagents-skill",
+		"",
+		challenge,
+		"S256",
+		"",
+	)
+	require.NoError(t, err)
+
+	for _, input := range []AgentConnectRequestCreate{
+		{
+			ClientKind:          "myagents-skill",
+			RedirectURI:         "http://127.0.0.1:43127/callback",
+			CodeChallenge:       challenge,
+			CodeChallengeMethod: "S256",
+		},
+		{
+			ClientKind:          "myagents-skill",
+			CodeChallenge:       challenge,
+			CodeChallengeMethod: "plain",
+		},
+		{
+			ClientKind:          "myagents-skill",
+			CodeChallenge:       "short",
+			CodeChallengeMethod: "S256",
+		},
+		{
+			ClientKind:          "myagents-skill",
+			CodeChallenge:       challenge,
+			CodeChallengeMethod: "S256",
+			State:               strings.Repeat("s", 32),
+		},
+	} {
+		_, _, createErr := CreateAgentConnectRequest(input)
+		assert.Error(t, createErr)
+	}
+}
+
+func TestAgentConnectPairingExchangeWaitsForApprovalAndIssuesOneToken(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&AgentConnectRequest{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&AgentConnectRequest{}).Error)
+
+	verifier := strings.Repeat("v", 43)
+	verifierHash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(verifierHash[:])
+	requestID, request, err := CreateAgentConnectRequest(AgentConnectRequestCreate{
+		ClientKind:          "myagents-skill",
+		CodeChallenge:       challenge,
+		CodeChallengeMethod: "S256",
+	})
+	require.NoError(t, err)
+	assert.True(t, request.PairingMode)
+
+	_, err = ExchangeAgentConnectPairingRequest(requestID, verifier)
+	require.ErrorIs(t, err, ErrAgentConnectNotAuthorized)
+
+	_, err = AuthorizeAgentConnectRequest(requestID, 42, "default", "gpt-4.1-mini")
+	require.NoError(t, err)
+	_, err = ExchangeAgentConnectPairingRequest(requestID, strings.Repeat("x", 43))
+	require.ErrorIs(t, err, ErrAgentConnectInvalidVerifier)
+
+	token, err := ExchangeAgentConnectPairingRequest(requestID, verifier)
+	require.NoError(t, err)
+	assert.Equal(t, "default", token.Group)
+	assert.Equal(t, "gpt-4.1-mini", token.ModelLimits)
+	assert.True(t, token.UnlimitedQuota)
+	assert.True(t, token.ModelLimitsEnabled)
+	assert.InDelta(t, time.Now().Add(AgentConnectTokenLifetime).Unix(), token.ExpiredTime, 1)
+
+	_, err = ExchangeAgentConnectPairingRequest(requestID, verifier)
+	require.ErrorIs(t, err, ErrAgentConnectConsumed)
+	var count int64
+	require.NoError(t, DB.Model(&Token{}).Where("user_id = ?", 42).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+}
+
 func TestAgentConnectExchangeIssuesOnlyOneLimitedNinetyDayToken(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.AutoMigrate(&AgentConnectRequest{}))

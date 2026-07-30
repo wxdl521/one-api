@@ -13,7 +13,7 @@ import (
 const (
 	agentConnectSkillName    = "the-one-gateway"
 	agentConnectSkillVersion = "1.0.0"
-	agentConnectSkillSource  = "https://github.com/QuantumNous/the-one/tree/main/agent-integrations/myagents/the-one-gateway"
+	agentConnectSkillSource  = "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway/SKILL.md"
 )
 
 type createAgentConnectRequest struct {
@@ -36,6 +36,15 @@ type exchangeAgentConnectRequest struct {
 	CodeVerifier      string `json:"code_verifier"`
 }
 
+type createAgentConnectPairingRequest struct {
+	CodeChallenge       string `json:"code_challenge"`
+	CodeChallengeMethod string `json:"code_challenge_method"`
+}
+
+type exchangeAgentConnectPairingRequest struct {
+	CodeVerifier string `json:"code_verifier"`
+}
+
 func CreateAgentConnectRequest(c *gin.Context) {
 	var input createAgentConnectRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -56,6 +65,31 @@ func CreateAgentConnectRequest(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"request_id": requestID,
 		"expires_at": request.ExpiresAt.Unix(),
+	})
+}
+
+// CreateAgentConnectPairing creates an in-browser MyAgents Skill pairing.
+// Unlike the CLI flow, this request has no loopback callback or state value.
+func CreateAgentConnectPairing(c *gin.Context) {
+	var input createAgentConnectPairingRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeAgentConnectError(c, model.ErrAgentConnectInvalid)
+		return
+	}
+	requestID, request, err := model.CreateAgentConnectRequest(model.AgentConnectRequestCreate{
+		ClientKind:          "myagents-skill",
+		CodeChallenge:       input.CodeChallenge,
+		CodeChallengeMethod: input.CodeChallengeMethod,
+	})
+	if err != nil {
+		writeAgentConnectError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"request_id":            requestID,
+		"authorization_path":    "/agent-connect?request_id=" + url.QueryEscape(requestID),
+		"expires_at":            request.ExpiresAt.Unix(),
+		"poll_interval_seconds": 2,
 	})
 }
 
@@ -88,6 +122,13 @@ func AuthorizeAgentConnectRequest(c *gin.Context) {
 	authorizationCode, err := model.AuthorizeAgentConnectRequest(requestID, c.GetInt("id"), input.Group, input.Model)
 	if err != nil {
 		writeAgentConnectError(c, err)
+		return
+	}
+	if request.PairingMode {
+		common.ApiSuccess(c, gin.H{
+			"completed": true,
+			"message":   "Connection approved. Return to MyAgents.",
+		})
 		return
 	}
 	callbackURL, err := url.Parse(request.RedirectURI)
@@ -129,6 +170,28 @@ func ExchangeAgentConnectRequest(c *gin.Context) {
 		writeAgentConnectError(c, err)
 		return
 	}
+	writeAgentConnectManifest(c, token)
+}
+
+func ExchangeAgentConnectPairing(c *gin.Context) {
+	var input exchangeAgentConnectPairingRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeAgentConnectError(c, model.ErrAgentConnectInvalid)
+		return
+	}
+	token, err := model.ExchangeAgentConnectPairingRequest(c.Param("request_id"), input.CodeVerifier)
+	if errors.Is(err, model.ErrAgentConnectNotAuthorized) {
+		common.ApiSuccess(c, gin.H{"pending": true})
+		return
+	}
+	if err != nil {
+		writeAgentConnectError(c, err)
+		return
+	}
+	writeAgentConnectManifest(c, token)
+}
+
+func writeAgentConnectManifest(c *gin.Context, token *model.Token) {
 	common.ApiSuccess(c, gin.H{
 		"api_key":    token.Key,
 		"expires_at": token.ExpiredTime,

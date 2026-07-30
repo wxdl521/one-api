@@ -66,7 +66,7 @@ func TestConfigureMyAgentsUsesStableIDsAndNeverWritesTheDefaultProvider(t *testi
 		Skill: agentConnectSkillManifest{
 			Name:    "the-one-gateway",
 			Version: "1.0.0",
-			Source:  "https://github.com/QuantumNous/the-one/tree/main/agent-integrations/myagents/the-one-gateway",
+			Source:  "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway/SKILL.md",
 		},
 	}
 	var output strings.Builder

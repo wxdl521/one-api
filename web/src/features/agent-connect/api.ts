@@ -40,7 +40,7 @@ export async function authorizeAgentConnect(
   input: { group: string; model: string }
 ) {
   const response = await api.post<
-    AgentConnectResponse<{ callback_url: string }>
+    AgentConnectResponse<{ callback_url?: string; completed?: boolean }>
   >(
     `/api/agent-connect/requests/${encodeURIComponent(requestID)}/authorize`,
     input

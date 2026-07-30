@@ -75,6 +75,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			agentConnectRoute.POST("/requests", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.CreateAgentConnectRequest)
 			agentConnectRoute.POST("/exchange", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ExchangeAgentConnectRequest)
+			agentConnectRoute.POST("/pairings", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.CreateAgentConnectPairing)
+			agentConnectRoute.POST("/pairings/:request_id/exchange", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ExchangeAgentConnectPairing)
 
 			authorizedAgentConnectRoute := agentConnectRoute.Group("/requests")
 			authorizedAgentConnectRoute.Use(middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache())

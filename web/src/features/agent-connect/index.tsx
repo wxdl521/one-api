@@ -20,7 +20,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { CopyButton } from '@/components/copy-button'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
@@ -42,20 +41,13 @@ import {
   type AgentConnectGroup,
 } from './api'
 
-const RELEASE_BASE_URL =
-  'https://github.com/wxdl521/one-api/releases/latest/download'
 const EMPTY_GROUPS: AgentConnectGroup[] = []
 const EMPTY_MODELS: string[] = []
+const ONBOARDING_INSTRUCTION =
+  'Read https://the-one.bolierxiang.cn/skills/myagents/SKILL.md and safely connect The One. Keep my current default provider unchanged.'
 
 type AgentConnectPageProps = {
   requestID?: string
-}
-
-function downloadCommand(platform: 'windows' | 'macos', origin: string) {
-  if (platform === 'windows') {
-    return `$p = Join-Path $env:TEMP 'the-one-connect.exe'; Invoke-WebRequest -Uri '${RELEASE_BASE_URL}/the-one-connect-windows-amd64.exe' -OutFile $p; & $p myagents --base-url '${origin}'`
-  }
-  return `arch="$(uname -m)"; asset="the-one-connect-darwin-amd64"; if [ "$arch" = "arm64" ]; then asset="the-one-connect-darwin-arm64"; fi; curl -fsSLo /tmp/the-one-connect "${RELEASE_BASE_URL}/$asset"; chmod +x /tmp/the-one-connect; /tmp/the-one-connect myagents --base-url '${origin}'`
 }
 
 export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
@@ -64,13 +56,8 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
   const auth = useAuthStore((state) => state.auth)
   const [group, setGroup] = useState('')
   const [model, setModel] = useState('')
+  const [connectionApproved, setConnectionApproved] = useState(false)
   const authenticated = Boolean(auth.user && auth.accessToken)
-  const origin = typeof window === 'undefined' ? '' : window.location.origin
-  const windowsCommand = useMemo(
-    () => downloadCommand('windows', origin),
-    [origin]
-  )
-  const macOSCommand = useMemo(() => downloadCommand('macos', origin), [origin])
   const optionsQuery = useQuery({
     queryKey: ['agent-connect-options', requestID],
     queryFn: () => getAgentConnectOptions(requestID ?? ''),
@@ -110,11 +97,19 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
   const authorizeMutation = useMutation({
     mutationFn: () => authorizeAgentConnect(requestID ?? '', { group, model }),
     onSuccess: (response) => {
-      if (!response.success || !response.data?.callback_url) {
+      if (!response.success || !response.data) {
         toast.error(response.message || t('Failed to complete the connection.'))
         return
       }
-      window.location.assign(response.data.callback_url)
+      if (response.data.completed) {
+        setConnectionApproved(true)
+        return
+      }
+      if (response.data.callback_url) {
+        window.location.assign(response.data.callback_url)
+        return
+      }
+      toast.error(response.message || t('Failed to complete the connection.'))
     },
     onError: () => toast.error(t('Failed to complete the connection.')),
   })
@@ -137,26 +132,36 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
   }
 
   let content: ReactNode
-  if (!requestID) {
+  if (connectionApproved) {
     content = (
       <Card>
         <CardHeader>
-          <CardTitle>{t('Start from the connector')}</CardTitle>
+          <CardTitle>{t('Connection approved')}</CardTitle>
           <CardDescription>
             {t(
-              'The One connector needs a request ID. Download it and run one of these commands to start the connection.'
+              'Return to MyAgents. It will finish the local provider, MCP, and Skill configuration without changing your default provider.'
             )}
           </CardDescription>
         </CardHeader>
-        <CardContent className='grid gap-4'>
-          <DownloadCommand
-            label={t('Download connector for Windows')}
-            value={windowsCommand}
-          />
-          <DownloadCommand
-            label={t('Download connector for macOS')}
-            value={macOSCommand}
-          />
+      </Card>
+    )
+  } else if (!requestID) {
+    content = (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Connect from MyAgents')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Send this instruction to MyAgents. It will open this official page and wait while you sign in and approve the connection.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className='bg-muted flex items-start gap-2 rounded-lg p-3'>
+            <code className='min-w-0 flex-1 overflow-x-auto text-xs leading-5 break-all'>
+              {ONBOARDING_INSTRUCTION}
+            </code>
+          </div>
         </CardContent>
       </Card>
     )
@@ -173,7 +178,7 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
         </CardHeader>
         <CardFooter className='justify-between gap-4'>
           <p className='text-muted-foreground text-sm'>
-            {t('Your browser will return to the local connector.')}
+            {t('After confirmation, return to MyAgents to finish setup.')}
           </p>
           <Button onClick={signIn}>{t('Sign in to continue')}</Button>
         </CardFooter>
@@ -292,24 +297,10 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
 
         <p className='text-muted-foreground text-center text-sm'>
           {t(
-            'The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.'
+            'You always enter passwords and two-factor codes yourself. MyAgents never needs them in chat.'
           )}
         </p>
       </main>
-    </div>
-  )
-}
-
-function DownloadCommand({ label, value }: { label: string; value: string }) {
-  return (
-    <div className='grid gap-2'>
-      <p className='text-sm font-medium'>{label}</p>
-      <div className='bg-muted flex items-start gap-2 rounded-lg p-3'>
-        <code className='min-w-0 flex-1 overflow-x-auto text-xs leading-5 break-all'>
-          {value}
-        </code>
-        <CopyButton value={value} tooltip={label} />
-      </div>
     </div>
   )
 }
