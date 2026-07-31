@@ -73,11 +73,6 @@ export const ADVANCED_CUSTOM_CONVERTER_OPTIONS: Array<{
     label: 'OpenAI Chat to Gemini Generate Content',
     triggerLabel: 'To Gemini Generate Content',
   },
-  {
-    value: 'openai_image_to_moma_qwen_image',
-    label: 'OpenAI Image to MoMA Qwen Image',
-    triggerLabel: 'OpenAI Image to MoMA Qwen Image',
-  },
 ]
 
 export type AdvancedCustomAuthMode = 'default' | AdvancedCustomAuthType
@@ -407,12 +402,6 @@ export function getAdvancedCustomConverterDefaults(
     converter === 'openai_responses_to_gemini_generate_content'
   ) {
     return { upstream_path: geminiGenerateContentPath, auth: geminiQueryAuth() }
-  }
-  if (converter === 'openai_image_to_moma_qwen_image') {
-    return {
-      upstream_path: '/v1/aigc/multimodal-generation/generation',
-      auth: bearerHeaderAuth(),
-    }
   }
 
   return {
@@ -860,9 +849,6 @@ function isConverterPathAllowed(
   }
   if (converter === 'openai_responses_to_gemini_generate_content') {
     return incomingPath === '/v1/responses'
-  }
-  if (converter === 'openai_image_to_moma_qwen_image') {
-    return incomingPath === '/v1/images/generations'
   }
   return (
     incomingPath.includes(':generateContent') ||

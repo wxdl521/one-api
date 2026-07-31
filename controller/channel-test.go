@@ -46,13 +46,6 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if normalized != "" {
 		return normalized
 	}
-	if channel != nil && channel.Type == constant.ChannelTypeAdvancedCustom {
-		if config := channel.GetOtherSettings().AdvancedCustom; config != nil {
-			if lo.Contains(config.SupportedEndpointTypesForModel(modelName), constant.EndpointTypeImageGeneration) {
-				return string(constant.EndpointTypeImageGeneration)
-			}
-		}
-	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
 		return string(constant.EndpointTypeOpenAIResponseCompact)
 	}

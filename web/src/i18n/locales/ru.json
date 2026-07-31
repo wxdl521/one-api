@@ -5474,7 +5474,6 @@
     "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.",
     "The connection is approved. Return to Hermes or MyAgents; it will finish local setup without changing your default provider.": "Подключение подтверждено. Вернитесь в Hermes или MyAgents: настройка будет завершена без изменения поставщика по умолчанию.",
     "Choose the group and model your agent can use.": "Выберите группу и модель, которые может использовать ваш агент.",
-    "Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.": "Откройте эту страницу в системном браузере. Пароли и коды двухфакторной аутентификации вводите только вы; агент никогда не запрашивает их в чате.",
-    "OpenAI Image to MoMA Qwen Image": "Изображение OpenAI в MoMA Qwen Image"
+    "Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.": "Откройте эту страницу в системном браузере. Пароли и коды двухфакторной аутентификации вводите только вы; агент никогда не запрашивает их в чате."
   }
 }

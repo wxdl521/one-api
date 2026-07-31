@@ -140,7 +140,6 @@ export type AdvancedCustomConverter =
   | 'openai_responses_to_gemini_generate_content'
   | 'gemini_generate_content_to_openai_chat_completions'
   | 'openai_chat_completions_to_gemini_generate_content'
-  | 'openai_image_to_moma_qwen_image'
 
 export type AdvancedCustomAuthType = 'none' | 'header' | 'query'
 
