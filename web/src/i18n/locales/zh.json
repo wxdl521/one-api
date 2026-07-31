@@ -5474,6 +5474,7 @@
     "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "连接器仅打开此页面并接收本地回调。密码和双重验证码必须由你自行输入。",
     "The connection is approved. Return to Hermes or MyAgents; it will finish local setup without changing your default provider.": "连接已确认。请返回 Hermes 或 MyAgents，它会完成本地配置且不会更改你的默认供应商。",
     "Choose the group and model your agent can use.": "选择你的 Agent 可以使用的分组和模型。",
-    "Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.": "请使用系统浏览器打开此页面。密码和双重验证码始终由你自行输入；Agent 不会在聊天中索取它们。"
+    "Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.": "请使用系统浏览器打开此页面。密码和双重验证码始终由你自行输入；Agent 不会在聊天中索取它们。",
+    "OpenAI Image to MoMA Qwen Image": "OpenAI 图像转 MoMA Qwen Image"
   }
 }

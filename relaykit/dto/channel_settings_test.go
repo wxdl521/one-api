@@ -58,6 +58,35 @@ func TestAdvancedCustomValidateResponsesToChatConverterPath(t *testing.T) {
 	}
 }
 
+func TestAdvancedCustomValidateMoMAQwenImageConverterPath(t *testing.T) {
+
+	valid := &AdvancedCustomConfig{
+		Routes: []AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/images/generations",
+				UpstreamPath: "/v1/aigc/multimodal-generation/generation",
+				Converter:    "openai_image_to_moma_qwen_image",
+				Models:       []string{"qwen/qwen-image-2.0-pro"},
+			},
+		},
+	}
+	require.NoError(t, valid.Validate())
+
+	invalid := &AdvancedCustomConfig{
+		Routes: []AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/chat/completions",
+				UpstreamPath: "/v1/aigc/multimodal-generation/generation",
+				Converter:    "openai_image_to_moma_qwen_image",
+				Models:       []string{"qwen/qwen-image-2.0-pro"},
+			},
+		},
+	}
+	err := invalid.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "converter does not match incoming_path")
+}
+
 func TestAdvancedCustomValidateModelListRouteConstraints(t *testing.T) {
 	valid := &AdvancedCustomConfig{
 		Routes: []AdvancedCustomRoute{

@@ -175,10 +175,14 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil, err
 	}
-	if converter != relayconvert.ConverterNone {
+	switch converter {
+	case relayconvert.ConverterNone:
+		return a.convertOpenAICompatibleImageRequest(c, info, request)
+	case relayconvert.ConverterOpenAIImageToMoMAQwenImage:
+		return convertOpenAIImageToMoMAQwenImage(info, request)
+	default:
 		return nil, fmt.Errorf("converter %q does not support image requests", converter)
 	}
-	return a.convertOpenAICompatibleImageRequest(c, info, request)
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
@@ -311,6 +315,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			return openai.OaiChatToResponsesStreamHandler(c, info, resp)
 		}
 		return openai.OaiChatToResponsesHandler(c, info, resp)
+	case relayconvert.ConverterOpenAIImageToMoMAQwenImage:
+		return doMoMAQwenImageResponse(c, resp, info)
 	default:
 		return nil, types.NewOpenAIError(fmt.Errorf("unsupported advanced custom converter: %s", a.converter), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
