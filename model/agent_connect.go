@@ -33,13 +33,14 @@ const (
 )
 
 var (
-	ErrAgentConnectInvalid         = errors.New("agent connect request is invalid")
-	ErrAgentConnectExpired         = errors.New("agent connect request has expired")
-	ErrAgentConnectCanceled        = errors.New("agent connect request was canceled")
-	ErrAgentConnectConsumed        = errors.New("agent connect request was already consumed")
-	ErrAgentConnectNotAuthorized   = errors.New("agent connect request is not authorized")
-	ErrAgentConnectInvalidVerifier = errors.New("agent connect PKCE verifier is invalid")
-	ErrAgentConnectTokenLimit      = errors.New("agent connect token limit reached")
+	ErrAgentConnectInvalid                  = errors.New("agent connect request is invalid")
+	ErrAgentConnectExpired                  = errors.New("agent connect request has expired")
+	ErrAgentConnectCanceled                 = errors.New("agent connect request was canceled")
+	ErrAgentConnectConsumed                 = errors.New("agent connect request was already consumed")
+	ErrAgentConnectNotAuthorized            = errors.New("agent connect request is not authorized")
+	ErrAgentConnectInvalidVerifier          = errors.New("agent connect PKCE verifier is invalid")
+	ErrAgentConnectTokenLimit               = errors.New("agent connect token limit reached")
+	ErrAgentConnectReauthenticationRequired = errors.New("agent connect requires a fresh login")
 )
 
 // AgentConnectRequest stores the server-side state for a short-lived native
@@ -47,24 +48,26 @@ var (
 // code are HMACed before storage, so neither credential can be replayed from a
 // database dump.
 type AgentConnectRequest struct {
-	Id                    int64      `json:"id" gorm:"primaryKey"`
-	RequestHash           string     `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
-	ClientKind            string     `json:"client_kind" gorm:"type:varchar(32);not null"`
-	PairingMode           bool       `json:"pairing_mode"`
-	RedirectURI           string     `json:"redirect_uri" gorm:"type:varchar(512);not null"`
-	State                 string     `json:"state" gorm:"type:varchar(128);not null"`
-	CodeChallenge         string     `json:"-" gorm:"type:varchar(128);not null"`
-	UserId                int        `json:"user_id,omitempty" gorm:"index"`
-	Group                 string     `json:"group,omitempty" gorm:"type:varchar(128)"`
-	Model                 string     `json:"model,omitempty" gorm:"type:varchar(255)"`
-	AuthorizationCodeHash *string    `json:"-" gorm:"type:char(64);uniqueIndex"`
-	Status                string     `json:"status" gorm:"type:varchar(16);not null;index"`
-	TokenId               *int       `json:"token_id,omitempty" gorm:"uniqueIndex"`
-	CreatedAt             time.Time  `json:"created_at"`
-	ExpiresAt             time.Time  `json:"expires_at" gorm:"not null;index"`
-	AuthorizedAt          *time.Time `json:"authorized_at,omitempty"`
-	ConsumedAt            *time.Time `json:"consumed_at,omitempty" gorm:"index"`
-	CanceledAt            *time.Time `json:"canceled_at,omitempty" gorm:"index"`
+	Id                         int64      `json:"id" gorm:"primaryKey"`
+	RequestHash                string     `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
+	ClientKind                 string     `json:"client_kind" gorm:"type:varchar(32);not null"`
+	PairingMode                bool       `json:"pairing_mode"`
+	RedirectURI                string     `json:"redirect_uri" gorm:"type:varchar(512);not null"`
+	State                      string     `json:"state" gorm:"type:varchar(128);not null"`
+	CodeChallenge              string     `json:"-" gorm:"type:varchar(128);not null"`
+	UserId                     int        `json:"user_id,omitempty" gorm:"index"`
+	Group                      string     `json:"group,omitempty" gorm:"type:varchar(128)"`
+	Model                      string     `json:"model,omitempty" gorm:"type:varchar(255)"`
+	AuthorizationCodeHash      *string    `json:"-" gorm:"type:char(64);uniqueIndex"`
+	ReauthenticationNonceHash  *string    `json:"-" gorm:"type:char(64)"`
+	ReauthenticatedSessionHash *string    `json:"-" gorm:"type:char(64)"`
+	Status                     string     `json:"status" gorm:"type:varchar(16);not null;index"`
+	TokenId                    *int       `json:"token_id,omitempty" gorm:"uniqueIndex"`
+	CreatedAt                  time.Time  `json:"created_at"`
+	ExpiresAt                  time.Time  `json:"expires_at" gorm:"not null;index"`
+	AuthorizedAt               *time.Time `json:"authorized_at,omitempty"`
+	ConsumedAt                 *time.Time `json:"consumed_at,omitempty" gorm:"index"`
+	CanceledAt                 *time.Time `json:"canceled_at,omitempty" gorm:"index"`
 }
 
 func (AgentConnectRequest) TableName() string {

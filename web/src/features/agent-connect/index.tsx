@@ -14,9 +14,9 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -32,10 +32,13 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { logout } from '@/features/auth/api'
+import { clearAuthenticatedClientState } from '@/lib/auth-session'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
   authorizeAgentConnect,
+  beginAgentConnectReauthentication,
   cancelAgentConnect,
   getAgentConnectOptions,
   type AgentConnectGroup,
@@ -55,13 +58,46 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
   const navigate = useNavigate()
   const auth = useAuthStore((state) => state.auth)
   const [group, setGroup] = useState('')
+  const queryClient = useQueryClient()
+  const reauthenticationRedirected = useRef(false)
   const [model, setModel] = useState('')
   const [connectionApproved, setConnectionApproved] = useState(false)
   const authenticated = Boolean(auth.user && auth.accessToken)
+  const reauthenticationQuery = useQuery({
+    queryKey: ['agent-connect-reauthentication', requestID],
+    queryFn: () => beginAgentConnectReauthentication(requestID ?? ''),
+    enabled: Boolean(requestID) && auth.bootstrapState === 'complete',
+    retry: false,
+  })
+
+  useEffect(() => {
+    if (
+      reauthenticationRedirected.current ||
+      !requestID ||
+      !reauthenticationQuery.data?.success ||
+      reauthenticationQuery.data.data?.reauthentication_required !== true
+    ) {
+      return
+    }
+    reauthenticationRedirected.current = true
+    void (async () => {
+      try {
+        await logout()
+      } finally {
+        clearAuthenticatedClientState(queryClient, false)
+        const redirect = `${window.location.pathname}${window.location.search}`
+        void navigate({ to: '/sign-in', search: { redirect }, replace: true })
+      }
+    })()
+  }, [navigate, queryClient, reauthenticationQuery.data, requestID])
+
   const optionsQuery = useQuery({
     queryKey: ['agent-connect-options', requestID],
     queryFn: () => getAgentConnectOptions(requestID ?? ''),
-    enabled: authenticated && Boolean(requestID),
+    enabled:
+      authenticated &&
+      reauthenticationQuery.data?.success === true &&
+      reauthenticationQuery.data.data?.reauthentication_required === false,
     retry: false,
   })
   const groups = useMemo(() => {
@@ -164,6 +200,19 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
           </div>
         </CardContent>
       </Card>
+    )
+  } else if (
+    auth.bootstrapState !== 'complete' ||
+    reauthenticationQuery.isLoading ||
+    reauthenticationQuery.data?.data?.reauthentication_required === true
+  ) {
+    content = <LoadingState message={t('Sign in to continue')} />
+  } else if (
+    reauthenticationQuery.isError ||
+    !reauthenticationQuery.data?.success
+  ) {
+    content = (
+      <ErrorState title={t('The connection request could not be loaded.')} />
     )
   } else if (!authenticated) {
     content = (

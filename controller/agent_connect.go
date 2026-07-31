@@ -105,8 +105,12 @@ func CreateAgentConnectPairing(c *gin.Context) {
 }
 
 func GetAgentConnectRequestOptions(c *gin.Context) {
-	if _, err := model.GetAgentConnectRequest(c.Param("request_id")); err != nil {
+	request, err := model.GetAgentConnectRequest(c.Param("request_id"))
+	if err != nil {
 		writeAgentConnectError(c, err)
+		return
+	}
+	if !requireAgentConnectFreshLogin(c, request) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{
@@ -124,6 +128,9 @@ func AuthorizeAgentConnectRequest(c *gin.Context) {
 	request, err := model.GetAgentConnectRequest(requestID)
 	if err != nil {
 		writeAgentConnectError(c, err)
+		return
+	}
+	if !requireAgentConnectFreshLogin(c, request) {
 		return
 	}
 	if !service.IsAgentConnectSelectionAllowed(c.GetString("group"), input.Group, input.Model) {
@@ -236,6 +243,8 @@ func writeAgentConnectError(c *gin.Context, err error) {
 		common.ApiErrorMsg(c, "Your account has reached its API key limit.")
 	case errors.Is(err, model.ErrAgentConnectInvalidVerifier):
 		common.ApiErrorMsg(c, "The local connection could not be verified.")
+	case errors.Is(err, model.ErrAgentConnectReauthenticationRequired):
+		common.ApiErrorMsg(c, "Sign in again to continue the connection.")
 	case errors.Is(err, model.ErrAgentConnectNotAuthorized):
 		common.ApiErrorMsg(c, "Confirm the connection in the browser before continuing.")
 	case errors.Is(err, model.ErrAgentConnectInvalid):

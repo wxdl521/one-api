@@ -28,6 +28,17 @@ type AgentConnectResponse<T = undefined> = {
   data?: T
 }
 
+export async function beginAgentConnectReauthentication(requestID: string) {
+  const response = await api.post<
+    AgentConnectResponse<{ reauthentication_required: boolean }>
+  >(
+    `/api/agent-connect/requests/${encodeURIComponent(requestID)}/reauthenticate`,
+    undefined,
+    { skipAuthRefresh: true, skipErrorHandler: true }
+  )
+  return response.data
+}
+
 export async function getAgentConnectOptions(requestID: string) {
   const response = await api.get<
     AgentConnectResponse<{ groups: AgentConnectGroup[] }>

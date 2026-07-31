@@ -74,6 +74,7 @@ func TestAgentConnectHTTPFlowOnlyReturnsKeyFromExchange(t *testing.T) {
 	require.True(t, createResponse.Success)
 	var created agentConnectCreateResponse
 	require.NoError(t, common.Unmarshal(createResponse.Data, &created))
+	bindAgentConnectTestFreshLogin(t, created.RequestID, 42)
 	require.NotEmpty(t, created.RequestID)
 	assert.NotContains(t, createRecorder.Body.String(), "api_key")
 
@@ -82,6 +83,9 @@ func TestAgentConnectHTTPFlowOnlyReturnsKeyFromExchange(t *testing.T) {
 	optionsContext.Request = httptest.NewRequest(http.MethodGet, "/api/agent-connect/requests/"+created.RequestID, nil)
 	optionsContext.Params = gin.Params{{Key: "request_id", Value: created.RequestID}}
 	optionsContext.Set("id", 42)
+	optionsContext.Set("session_id", agentConnectTestSessionID(42))
+	optionsContext.Set("auth_version", int64(1))
+	optionsContext.Set("session_version", int64(1))
 	optionsContext.Set("group", "default")
 	GetAgentConnectRequestOptions(optionsContext)
 	optionsResponse := decodeAPIResponse(t, optionsRecorder)
@@ -95,6 +99,7 @@ func TestAgentConnectHTTPFlowOnlyReturnsKeyFromExchange(t *testing.T) {
 	}, 42)
 	authorizeContext.Params = gin.Params{{Key: "request_id", Value: created.RequestID}}
 	authorizeContext.Set("group", "default")
+	setAgentConnectTestBrowserSession(authorizeContext, 42)
 	AuthorizeAgentConnectRequest(authorizeContext)
 	authorizeResponse := decodeAPIResponse(t, authorizeRecorder)
 	require.True(t, authorizeResponse.Success)
@@ -148,6 +153,7 @@ func TestAgentConnectAuthorizeRejectsModelOutsideSelectedGroup(t *testing.T) {
 	require.True(t, createResponse.Success)
 	var created agentConnectCreateResponse
 	require.NoError(t, common.Unmarshal(createResponse.Data, &created))
+	bindAgentConnectTestFreshLogin(t, created.RequestID, 42)
 
 	authorizeContext, authorizeRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/agent-connect/requests/"+created.RequestID+"/authorize", map[string]string{
 		"group": "default",
@@ -155,6 +161,7 @@ func TestAgentConnectAuthorizeRejectsModelOutsideSelectedGroup(t *testing.T) {
 	}, 42)
 	authorizeContext.Params = gin.Params{{Key: "request_id", Value: created.RequestID}}
 	authorizeContext.Set("group", "default")
+	setAgentConnectTestBrowserSession(authorizeContext, 42)
 	AuthorizeAgentConnectRequest(authorizeContext)
 
 	authorizeResponse := decodeAPIResponse(t, authorizeRecorder)
@@ -184,6 +191,7 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	require.True(t, createResponse.Success)
 	var created agentConnectPairingCreateResponse
 	require.NoError(t, common.Unmarshal(createResponse.Data, &created))
+	bindAgentConnectTestFreshLogin(t, created.RequestID, 42)
 	require.NotEmpty(t, created.RequestID)
 	assert.Equal(t, "/agent-connect?request_id="+url.QueryEscape(created.RequestID), created.AuthorizationPath)
 	assert.Equal(t, "/api/agent-connect/pairings/"+url.PathEscape(created.RequestID)+"/exchange", created.ExchangePath)
@@ -209,6 +217,7 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	}, 42)
 	authorizeContext.Params = gin.Params{{Key: "request_id", Value: created.RequestID}}
 	authorizeContext.Set("group", "default")
+	setAgentConnectTestBrowserSession(authorizeContext, 42)
 	AuthorizeAgentConnectRequest(authorizeContext)
 	authorizeResponse := decodeAPIResponse(t, authorizeRecorder)
 	require.True(t, authorizeResponse.Success)
@@ -256,6 +265,7 @@ func TestAgentConnectHermesPairingReturnsHermesUsageSkill(t *testing.T) {
 	require.True(t, createResponse.Success)
 	var created agentConnectPairingCreateResponse
 	require.NoError(t, common.Unmarshal(createResponse.Data, &created))
+	bindAgentConnectTestFreshLogin(t, created.RequestID, 42)
 
 	authorizeContext, _ := newAuthenticatedContext(t, http.MethodPost, "/api/agent-connect/requests/"+created.RequestID+"/authorize", map[string]string{
 		"group": "default",
@@ -263,6 +273,7 @@ func TestAgentConnectHermesPairingReturnsHermesUsageSkill(t *testing.T) {
 	}, 42)
 	authorizeContext.Params = gin.Params{{Key: "request_id", Value: created.RequestID}}
 	authorizeContext.Set("group", "default")
+	setAgentConnectTestBrowserSession(authorizeContext, 42)
 	AuthorizeAgentConnectRequest(authorizeContext)
 
 	exchangeContext, exchangeRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/agent-connect/pairings/"+created.RequestID+"/exchange", map[string]string{

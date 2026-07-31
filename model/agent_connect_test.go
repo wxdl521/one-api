@@ -374,3 +374,26 @@ func TestValidateAgentConnectBootstrapRejectsUnsafeCallbacksAndPKCE(t *testing.T
 		})
 	}
 }
+
+func TestAgentConnectReauthenticationBindsOnlyTheFreshLoginSession(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&AgentConnectRequest{}))
+	challenge := strings.Repeat("a", 43)
+	requestID, _, err := CreateAgentConnectRequest(AgentConnectRequestCreate{
+		ClientKind:          "hermes-skill",
+		CodeChallenge:       challenge,
+		CodeChallengeMethod: "S256",
+	})
+	require.NoError(t, err)
+
+	nonce, request, err := BeginAgentConnectReauthentication(requestID)
+	require.NoError(t, err)
+	require.NotEmpty(t, nonce)
+	assert.False(t, IsAgentConnectReauthenticatedSession(request, "old-session"))
+
+	require.NoError(t, CompleteAgentConnectReauthentication(requestID, nonce, "fresh-session"))
+	request, err = GetAgentConnectRequest(requestID)
+	require.NoError(t, err)
+	assert.True(t, IsAgentConnectReauthenticatedSession(request, "fresh-session"))
+	assert.False(t, IsAgentConnectReauthenticatedSession(request, "other-session"))
+}
