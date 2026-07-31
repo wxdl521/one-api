@@ -5471,6 +5471,9 @@
     "Cancel connection": "Cancel connection",
     "Failed to complete the connection.": "Failed to complete the connection.",
     "Connection canceled.": "Connection canceled.",
-    "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself."
+    "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.",
+    "The connection is approved. Return to Hermes or MyAgents; it will finish local setup without changing your default provider.": "接続が承認されました。Hermes または MyAgents に戻ってください。既定のプロバイダーを変更せずにローカル設定を完了します。",
+    "Choose the group and model your agent can use.": "エージェントが使用するグループとモデルを選択してください。",
+    "Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.": "このページはシステムブラウザーで開いてください。パスワードと二要素認証コードは必ずご自身で入力し、エージェントがチャットで求めることはありません。"
   }
 }

@@ -23,15 +23,33 @@ type agentConnectCreateResponse struct {
 type agentConnectPairingCreateResponse struct {
 	RequestID           string `json:"request_id"`
 	AuthorizationPath   string `json:"authorization_path"`
+	AuthorizationURL    string `json:"authorization_url"`
 	ExchangePath        string `json:"exchange_path"`
 	PollIntervalSeconds int    `json:"poll_interval_seconds"`
+	PollIntervalMS      int    `json:"poll_interval_ms"`
+	ExpiresIn           int64  `json:"expires_in"`
 }
 
 type agentConnectPairingExchangeResponse struct {
-	Pending bool   `json:"pending"`
-	APIKey  string `json:"api_key"`
-	Model   string `json:"model"`
-	Skill   struct {
+	Pending        bool   `json:"pending"`
+	Status         string `json:"status"`
+	PollIntervalMS int    `json:"poll_interval_ms"`
+	ExpiresIn      int64  `json:"expires_in"`
+	APIKey         string `json:"api_key"`
+	Model          string `json:"model"`
+	Manifest       struct {
+		APIKey       string `json:"api_key"`
+		ProviderName string `json:"provider_name"`
+		BaseURL      string `json:"base_url"`
+		Model        string `json:"model"`
+		Group        string `json:"group"`
+		MCP          struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"mcp"`
+		SkillURL string `json:"skill_url"`
+	} `json:"manifest"`
+	Skill struct {
 		Name    string `json:"name"`
 		Source  string `json:"source"`
 		Version string `json:"version"`
@@ -194,8 +212,11 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	bindAgentConnectTestFreshLogin(t, created.RequestID, 42)
 	require.NotEmpty(t, created.RequestID)
 	assert.Equal(t, "/agent-connect?request_id="+url.QueryEscape(created.RequestID), created.AuthorizationPath)
+	assert.Equal(t, "http://localhost:3000"+created.AuthorizationPath, created.AuthorizationURL)
 	assert.Equal(t, "/api/agent-connect/pairings/"+url.PathEscape(created.RequestID)+"/exchange", created.ExchangePath)
 	assert.Equal(t, 2, created.PollIntervalSeconds)
+	assert.Equal(t, 3000, created.PollIntervalMS)
+	assert.Positive(t, created.ExpiresIn)
 	assert.NotContains(t, createRecorder.Body.String(), "api_key")
 
 	pendingContext, pendingRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/agent-connect/pairings/"+created.RequestID+"/exchange", map[string]string{
@@ -208,6 +229,9 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	var pending agentConnectPairingExchangeResponse
 	require.NoError(t, common.Unmarshal(pendingResponse.Data, &pending))
 	assert.True(t, pending.Pending)
+	assert.Equal(t, "waiting_user", pending.Status)
+	assert.Equal(t, 3000, pending.PollIntervalMS)
+	assert.Positive(t, pending.ExpiresIn)
 	assert.Empty(t, pending.APIKey)
 	assert.NotContains(t, pendingRecorder.Body.String(), "api_key")
 
@@ -240,6 +264,13 @@ func TestAgentConnectPairingHTTPFlowReturnsKeyOnlyAfterBrowserApproval(t *testin
 	assert.Equal(t, "the-one-gateway", exchanged.Skill.Name)
 	assert.Equal(t, "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip", exchanged.Skill.Source)
 	assert.Equal(t, "1.1.0", exchanged.Skill.Version)
+	assert.Equal(t, exchanged.APIKey, exchanged.Manifest.APIKey)
+	assert.Equal(t, "the-one-bolierxiang-cn", exchanged.Manifest.ProviderName)
+	assert.Equal(t, "http://localhost:3000/v1", exchanged.Manifest.BaseURL)
+	assert.Equal(t, "agent-connect-pairing-model", exchanged.Manifest.Model)
+	assert.Equal(t, "default", exchanged.Manifest.Group)
+	assert.Equal(t, "the-one-gateway-bolierxiang-cn", exchanged.Manifest.MCP.Name)
+	assert.Equal(t, "http://localhost:3000/mcp", exchanged.Manifest.MCP.URL)
 }
 
 func TestAgentConnectHermesPairingReturnsHermesUsageSkill(t *testing.T) {
@@ -288,4 +319,32 @@ func TestAgentConnectHermesPairingReturnsHermesUsageSkill(t *testing.T) {
 	assert.Equal(t, "agent-connect-hermes-model", exchanged.Model)
 	assert.Equal(t, "https://the-one.bolierxiang.cn/skills/hermes/the-one-gateway/SKILL.md", exchanged.Skill.Source)
 	assert.NotEmpty(t, exchanged.APIKey)
+	assert.Equal(t, exchanged.APIKey, exchanged.Manifest.APIKey)
+	assert.Equal(t, "https://the-one.bolierxiang.cn/skills/hermes/the-one-gateway/SKILL.md", exchanged.Manifest.SkillURL)
+}
+
+func TestAgentConnectErrorsExposeStableNonSecretCodes(t *testing.T) {
+	testCases := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{name: "expired", err: model.ErrAgentConnectExpired, code: "expired"},
+		{name: "canceled", err: model.ErrAgentConnectCanceled, code: "denied"},
+		{name: "consumed", err: model.ErrAgentConnectConsumed, code: "revoked"},
+		{name: "invalid verifier", err: model.ErrAgentConnectInvalidVerifier, code: "invalid_verifier"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(recorder)
+			writeAgentConnectError(context, testCase.err)
+
+			response := decodeAPIResponse(t, recorder)
+			assert.False(t, response.Success)
+			assert.Contains(t, recorder.Body.String(), `"code":"`+testCase.code+`"`)
+			assert.NotContains(t, recorder.Body.String(), "api_key")
+		})
+	}
 }

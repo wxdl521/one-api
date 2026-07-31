@@ -3,10 +3,13 @@ package controller
 import (
 	"errors"
 	"net/url"
+	"strings"
+	"time"
 
 	"github.com/QuantumNous/the-one/common"
 	"github.com/QuantumNous/the-one/model"
 	"github.com/QuantumNous/the-one/service"
+	"github.com/QuantumNous/the-one/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,6 +18,7 @@ const (
 	agentConnectSkillVersion        = "1.1.0"
 	agentConnectMyAgentsSkillSource = "https://the-one.bolierxiang.cn/skills/myagents/the-one-gateway.zip"
 	agentConnectHermesSkillSource   = "https://the-one.bolierxiang.cn/skills/hermes/the-one-gateway/SKILL.md"
+	agentConnectPollIntervalSeconds = 3
 )
 
 type createAgentConnectRequest struct {
@@ -98,9 +102,12 @@ func CreateAgentConnectPairing(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"request_id":            requestID,
 		"authorization_path":    "/agent-connect?request_id=" + url.QueryEscape(requestID),
+		"authorization_url":     agentConnectOrigin() + "/agent-connect?request_id=" + url.QueryEscape(requestID),
 		"exchange_path":         "/api/agent-connect/pairings/" + url.PathEscape(requestID) + "/exchange",
 		"expires_at":            request.ExpiresAt.Unix(),
 		"poll_interval_seconds": 2,
+		"poll_interval_ms":      agentConnectPollIntervalSeconds * 1000,
+		"expires_in":            agentConnectExpiresIn(request.ExpiresAt),
 	})
 }
 
@@ -197,9 +204,19 @@ func ExchangeAgentConnectPairing(c *gin.Context) {
 		writeAgentConnectError(c, model.ErrAgentConnectInvalid)
 		return
 	}
+	request, err := model.GetAgentConnectRequest(c.Param("request_id"))
+	if err != nil {
+		writeAgentConnectError(c, err)
+		return
+	}
 	token, clientKind, err := model.ExchangeAgentConnectPairingManifest(c.Param("request_id"), input.CodeVerifier)
 	if errors.Is(err, model.ErrAgentConnectNotAuthorized) {
-		common.ApiSuccess(c, gin.H{"pending": true})
+		common.ApiSuccess(c, gin.H{
+			"pending":          true,
+			"status":           "waiting_user",
+			"poll_interval_ms": agentConnectPollIntervalSeconds * 1000,
+			"expires_in":       agentConnectExpiresIn(request.ExpiresAt),
+		})
 		return
 	}
 	if err != nil {
@@ -210,6 +227,7 @@ func ExchangeAgentConnectPairing(c *gin.Context) {
 }
 
 func writeAgentConnectManifest(c *gin.Context, token *model.Token, skillSource string) {
+	baseURL := agentConnectOrigin()
 	common.ApiSuccess(c, gin.H{
 		"api_key":    token.Key,
 		"expires_at": token.ExpiredTime,
@@ -221,7 +239,40 @@ func writeAgentConnectManifest(c *gin.Context, token *model.Token, skillSource s
 			"version": agentConnectSkillVersion,
 			"source":  skillSource,
 		},
+		"manifest": gin.H{
+			"api_key":       token.Key,
+			"api_key_env":   "THE_ONE_API_KEY",
+			"provider_name": "the-one-bolierxiang-cn",
+			"base_url":      baseURL + "/v1",
+			"api_mode":      "chat_completions",
+			"model":         token.ModelLimits,
+			"group":         token.Group,
+			"scopes":        []string{"chat", "mcp:readonly"},
+			"mcp": gin.H{
+				"name": "the-one-gateway-bolierxiang-cn",
+				"url":  baseURL + "/mcp",
+				"tools_include": []string{
+					"the_one_connection_status",
+					"the_one_list_models",
+					"the_one_usage",
+					"the_one_reconnect",
+				},
+			},
+			"skill_url": skillSource,
+		},
 	})
+}
+
+func agentConnectOrigin() string {
+	return strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
+}
+
+func agentConnectExpiresIn(expiresAt time.Time) int64 {
+	remaining := int64(time.Until(expiresAt).Seconds())
+	if remaining < 1 {
+		return 1
+	}
+	return remaining
 }
 
 func agentConnectSkillSourceForClient(clientKind string) string {
@@ -232,25 +283,36 @@ func agentConnectSkillSourceForClient(clientKind string) string {
 }
 
 func writeAgentConnectError(c *gin.Context, err error) {
+	code := "invalid_request"
+	message := "The connection request is invalid."
 	switch {
 	case errors.Is(err, model.ErrAgentConnectExpired):
-		common.ApiErrorMsg(c, "The connection request has expired. Start the connection again.")
+		code = "expired"
+		message = "The connection request has expired. Start the connection again."
 	case errors.Is(err, model.ErrAgentConnectCanceled):
-		common.ApiErrorMsg(c, "The connection request was canceled.")
+		code = "denied"
+		message = "The connection request was canceled."
 	case errors.Is(err, model.ErrAgentConnectConsumed):
-		common.ApiErrorMsg(c, "The connection request has already been used.")
+		code = "revoked"
+		message = "The connection request has already been used."
 	case errors.Is(err, model.ErrAgentConnectTokenLimit):
-		common.ApiErrorMsg(c, "Your account has reached its API key limit.")
+		code = "token_limit"
+		message = "Your account has reached its API key limit."
 	case errors.Is(err, model.ErrAgentConnectInvalidVerifier):
-		common.ApiErrorMsg(c, "The local connection could not be verified.")
+		code = "invalid_verifier"
+		message = "The local connection could not be verified."
 	case errors.Is(err, model.ErrAgentConnectReauthenticationRequired):
-		common.ApiErrorMsg(c, "Sign in again to continue the connection.")
+		code = "reauthentication_required"
+		message = "Sign in again to continue the connection."
 	case errors.Is(err, model.ErrAgentConnectNotAuthorized):
-		common.ApiErrorMsg(c, "Confirm the connection in the browser before continuing.")
+		code = "waiting_user"
+		message = "Confirm the connection in the browser before continuing."
 	case errors.Is(err, model.ErrAgentConnectInvalid):
-		common.ApiErrorMsg(c, "The connection request is invalid.")
+		code = "invalid_request"
 	default:
 		common.SysError("agent connect request failed: " + err.Error())
-		common.ApiErrorMsg(c, "Unable to complete the connection request.")
+		code = "internal_error"
+		message = "Unable to complete the connection request."
 	}
+	c.JSON(200, gin.H{"success": false, "message": message, "error": gin.H{"code": code}})
 }

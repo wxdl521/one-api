@@ -5471,6 +5471,9 @@
     "Cancel connection": "Cancel connection",
     "Failed to complete the connection.": "Failed to complete the connection.",
     "Connection canceled.": "Connection canceled.",
-    "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself."
+    "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.",
+    "The connection is approved. Return to Hermes or MyAgents; it will finish local setup without changing your default provider.": "La connexion est approuvée. Retournez à Hermes ou MyAgents ; il terminera la configuration locale sans modifier votre fournisseur par défaut.",
+    "Choose the group and model your agent can use.": "Choisissez le groupe et le modèle que votre agent peut utiliser.",
+    "Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.": "Utilisez le navigateur système pour cette page. Vous saisissez toujours vous-même les mots de passe et les codes à deux facteurs ; l’agent ne les demande jamais dans le chat."
   }
 }

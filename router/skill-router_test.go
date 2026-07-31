@@ -94,6 +94,11 @@ func TestHermesSkillsArePublicAndPreserveTheDefaultModel(t *testing.T) {
 	content := strings.ToLower(recorder.Body.String())
 	assert.Contains(t, content, "do not change the current default model")
 	assert.Contains(t, content, "the_one_api_key")
+	assert.Contains(t, content, "agent-controlled browser")
+	assert.Contains(t, content, "authorization_url")
+	assert.Contains(t, content, "data.pending")
+	assert.Contains(t, content, "retry-after")
+	assert.Contains(t, content, "system browser")
 	for _, forbidden := range []string{"invoke-webrequest", "curl", ".exe", "the-one-connect", "authorization: bearer"} {
 		assert.NotContains(t, content, forbidden)
 	}

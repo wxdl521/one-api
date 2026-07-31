@@ -175,7 +175,7 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
           <CardTitle>{t('Connection approved')}</CardTitle>
           <CardDescription>
             {t(
-              'Return to MyAgents. It will finish the local provider, MCP, and Skill configuration without changing your default provider.'
+              'The connection is approved. Return to Hermes or MyAgents; it will finish local setup without changing your default provider.'
             )}
           </CardDescription>
         </CardHeader>
@@ -272,7 +272,7 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
         <CardHeader>
           <CardTitle>{t('Connection setup')}</CardTitle>
           <CardDescription>
-            {t('Choose the group and model MyAgents can use.')}
+            {t('Choose the group and model your agent can use.')}
           </CardDescription>
         </CardHeader>
         <CardContent className='grid gap-5 sm:grid-cols-2'>
@@ -346,7 +346,7 @@ export function AgentConnectPage({ requestID }: AgentConnectPageProps) {
 
         <p className='text-muted-foreground text-center text-sm'>
           {t(
-            'You always enter passwords and two-factor codes yourself. MyAgents never needs them in chat.'
+            'Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.'
           )}
         </p>
       </main>

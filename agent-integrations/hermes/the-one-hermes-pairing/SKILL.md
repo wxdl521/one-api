@@ -19,6 +19,11 @@ The user should only need to operate the official browser page.
   browser storage, session cookies, PKCE values, or API keys.
 - The user alone signs in, completes 2FA, chooses group/model, and confirms the
   request in the official browser page. Do not automate those browser actions.
+- Never open `authorization_url` in an agent-controlled browser, CDP session,
+  headless Chromium, Browserbase, or browser automation tool. Send it only to
+  the user's own system browser. If the user is chatting in WeChat or another
+  in-app WebView, tell them to use the menu to open the link in their system
+  browser instead.
 - Do not download or execute binaries, installers, source clones, bootstrap
   scripts, or archives. Use only Hermes-native provider, secret, MCP, and Skill
   configuration operations.
@@ -36,14 +41,19 @@ The user should only need to operate the official browser page.
    {"client_kind":"hermes-skill","code_challenge":"<derived S256 value>","code_challenge_method":"S256"}
    ```
 
-3. Require an `authorization_path` beginning exactly with
-   `/agent-connect?request_id=`. Open only that path prefixed by
-   `https://the-one.bolierxiang.cn`, tell the user it is ready, and wait for
-   their confirmation.
-4. Poll only the returned `exchange_path` at its returned interval, ending at
-   `expires_at`. POST the in-memory verifier as `code_verifier`. A response
-   with `pending: true` means wait; a completed response has the manifest in
-   `data`. Never reveal the request ID, verifier, or response body.
+3. Require an absolute `authorization_url` on the official The One origin.
+   Send that URL privately to the user with this instruction: “Please open it
+   in your system browser, sign in, choose a group and model, then confirm.
+   Do not use an in-app browser.” The URL may be shown to that user, but never
+   copy its request ID into logs, Skills, repositories, or public chat.
+4. Poll only the returned `exchange_path`, ending at `expires_at`. POST the
+   in-memory verifier as `code_verifier`. Treat either `data.pending == true`
+   or a legacy top-level `pending == true` as waiting. Sleep for
+   `data.poll_interval_ms` (at least 3000ms) before each retry. On HTTP 429,
+   honor `Retry-After` and use exponential backoff capped at 30 seconds.
+   Stop immediately on `denied`, `expired`, `revoked`, or `invalid_verifier`.
+   A completed response has the manifest in `data.manifest`. Never reveal the
+   verifier, API key, cookie, or raw exchange response body.
 5. Retain the returned API key only in Hermes secret storage as
    `THE_ONE_API_KEY` in `~/.hermes/.env`. Never place the key in a Skill,
    command line, visible configuration value, conversation, or diagnostic.
@@ -79,11 +89,20 @@ Install the post-connection Skill with Hermes' native Skill installer from:
 
 `https://the-one.bolierxiang.cn/skills/hermes/the-one-gateway/SKILL.md`
 
-Do not set `model.default`, `model.provider`, or any global model setting.
-Verify that the original default model is unchanged, the named provider lists
-the approved model, and the named MCP connects. Report only success or the
-non-secret failed step. On partial failure, retry only these named entries and
-never remove or overwrite unrelated configuration.
+Before configuration, snapshot the exact values of `model.default` and
+`model.provider`. Do not set either field or any global model setting. After
+configuration, verify both values are byte-identical to the snapshot, the named
+provider lists the approved model, and the named MCP connects. Report only
+success or the non-secret failed step. On partial failure, revert only this
+attempt's named provider/MCP/Skill entries and never remove or overwrite
+unrelated configuration.
+
+## Cancellation and cleanup
+
+If the user says stop, cancels, or does not complete the request before expiry,
+immediately stop polling and delete the in-memory verifier and temporary
+metadata. Do not write a key or leave half-configured named entries. Never
+restart pairing automatically; wait for an explicit new request from the user.
 
 ## Reconnect
 

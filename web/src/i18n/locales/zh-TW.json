@@ -5471,6 +5471,9 @@
     "Cancel connection": "取消連接",
     "Failed to complete the connection.": "無法完成連接。",
     "Connection canceled.": "連接已取消。",
-    "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "連接器只會開啟此頁面並接收本機回呼。密碼和雙重驗證碼必須由你自行輸入。"
+    "The connector only opens this page and receives its local callback. You always enter passwords and two-factor codes yourself.": "連接器只會開啟此頁面並接收本機回呼。密碼和雙重驗證碼必須由你自行輸入。",
+    "The connection is approved. Return to Hermes or MyAgents; it will finish local setup without changing your default provider.": "連線已確認。請返回 Hermes 或 MyAgents，它會完成本機設定且不會變更你的預設供應商。",
+    "Choose the group and model your agent can use.": "選擇你的 Agent 可以使用的群組和模型。",
+    "Use your system browser for this page. You always enter passwords and two-factor codes yourself; the agent never needs them in chat.": "請使用系統瀏覽器開啟此頁面。密碼和雙重驗證碼一律由你自行輸入；Agent 不會在聊天中要求它們。"
   }
 }
