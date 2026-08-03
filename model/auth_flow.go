@@ -76,6 +76,10 @@ type AuthFlowMatch struct {
 
 func applyAuthFlowMatch(query *gorm.DB, token string, match AuthFlowMatch) *gorm.DB {
 	query = query.Where("token_hash = ? AND purpose = ?", authFlowTokenHash(token), match.Purpose)
+	return applyAuthFlowMatchConstraints(query, match)
+}
+
+func applyAuthFlowMatchConstraints(query *gorm.DB, match AuthFlowMatch) *gorm.DB {
 	if match.Provider != "" {
 		query = query.Where("provider = ?", match.Provider)
 	}
@@ -229,8 +233,22 @@ func ConsumeAuthFlowWithTx(tx *gorm.DB, token string, match AuthFlowMatch, actio
 	if tx == nil || token == "" || match.Purpose == "" {
 		return nil, ErrAuthFlowInvalid
 	}
+	return consumeAuthFlowWithTx(tx, applyAuthFlowMatch(lockForUpdate(tx), token, match), action)
+}
+
+// ConsumeAuthFlowByIDWithTx consumes an already-linked auth flow without
+// requiring its opaque client token. Callers must obtain the flow ID from a
+// separately validated, one-time parent flow in the same transaction.
+func ConsumeAuthFlowByIDWithTx(tx *gorm.DB, flowID int64, match AuthFlowMatch, action func(tx *gorm.DB, flow *AuthFlow) error) (*AuthFlow, error) {
+	if tx == nil || flowID <= 0 || match.Purpose == "" {
+		return nil, ErrAuthFlowInvalid
+	}
+	query := lockForUpdate(tx).Where("id = ? AND purpose = ?", flowID, match.Purpose)
+	return consumeAuthFlowWithTx(tx, applyAuthFlowMatchConstraints(query, match), action)
+}
+
+func consumeAuthFlowWithTx(tx *gorm.DB, query *gorm.DB, action func(tx *gorm.DB, flow *AuthFlow) error) (*AuthFlow, error) {
 	var consumed AuthFlow
-	query := applyAuthFlowMatch(lockForUpdate(tx), token, match)
 	if err := query.First(&consumed).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrAuthFlowInvalid

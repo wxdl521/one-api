@@ -33,6 +33,7 @@ var (
 	ErrMiniAppEmailVerification      = errors.New("mini app email verification is required")
 	ErrMiniAppIdentityUnbound        = errors.New("mini app identity is not bound")
 	ErrMiniAppSessionOwnership       = errors.New("mini app session does not belong to the identity")
+	ErrMiniAppBrowserSessionRequired = errors.New("a regular browser session is required for mini app binding")
 
 	wechatMiniAppCodeExchangeEndpoint = wechatMiniAppCodeExchangeDefaultEndpoint
 	wechatMiniAppHTTPClientFactory    = func(timeout time.Duration) *http.Client {
@@ -74,10 +75,11 @@ type miniAppBindingFlowPayload struct {
 }
 
 // MiniAppBindingStart is the browser handoff for an unbound Mini Program
-// subject. Both query parameters are opaque one-time credentials; no raw
-// WeChat identity material appears in the URL.
+// subject. Its URL carries exactly one opaque one-time bind credential; no
+// raw WeChat identity material appears in the URL.
 type MiniAppBindingStart struct {
-	BindURL string `json:"bind_url"`
+	BindingID string `json:"binding_id"`
+	BindURL   string `json:"bind_url"`
 }
 
 // MiniAppRegistration is the password-registration subset that a Mini Program
@@ -251,24 +253,26 @@ func CreateMiniAppBinding(pendingTicket string) (*MiniAppBindingStart, error) {
 		return nil, ErrMiniAppConfiguration
 	}
 	query := bindingURL.Query()
-	query.Set("ticket", pendingTicket)
 	query.Set("binding_ticket", bindingTicket)
 	bindingURL.RawQuery = query.Encode()
-	return &MiniAppBindingStart{BindURL: bindingURL.String()}, nil
+	return &MiniAppBindingStart{BindingID: binding.ID, BindURL: bindingURL.String()}, nil
 }
 
 // ConfirmMiniAppBinding requires an authenticated browser session, then
-// consumes both one-time flows and claims the durable Mini Program identity in
-// one transaction. The payload comparisons prevent tickets being mixed across
-// unrelated Mini Program subjects.
-func ConfirmMiniAppBinding(pendingTicket, bindingTicket string, browserIdentity AuthIdentity) error {
+// consumes the opaque browser bind flow and its server-linked pending flow in
+// one transaction. The browser never receives the pending identity ticket.
+func ConfirmMiniAppBinding(bindingTicket string, browserIdentity AuthIdentity) error {
 	if _, err := RequireMiniProgramConfig(); err != nil {
 		return err
 	}
-	if _, _, err := ValidateLoginSession(browserIdentity); err != nil {
+	session, _, err := ValidateLoginSession(browserIdentity)
+	if err != nil {
 		return err
 	}
-	_, err := model.ConsumeAuthFlowWithAction(bindingTicket, model.AuthFlowMatch{
+	if session.LoginMethod == "wechat-miniapp" {
+		return ErrMiniAppBrowserSessionRequired
+	}
+	_, err = model.ConsumeAuthFlowWithAction(bindingTicket, model.AuthFlowMatch{
 		Purpose: model.AuthFlowPurposeMiniAppBind, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentBind,
 	}, func(tx *gorm.DB, bindingFlow *model.AuthFlow) error {
 		var bindingPayload miniAppBindingFlowPayload
@@ -277,12 +281,9 @@ func ConfirmMiniAppBinding(pendingTicket, bindingTicket string, browserIdentity 
 			bindingPayload.AppID == "" || bindingPayload.OpenIDHash == "" {
 			return model.ErrAuthFlowInvalid
 		}
-		_, err := model.ConsumeAuthFlowWithTx(tx, pendingTicket, model.AuthFlowMatch{
+		_, err := model.ConsumeAuthFlowByIDWithTx(tx, bindingPayload.PendingFlowID, model.AuthFlowMatch{
 			Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin,
 		}, func(tx *gorm.DB, pendingFlow *model.AuthFlow) error {
-			if pendingFlow.Id != bindingPayload.PendingFlowID {
-				return model.ErrAuthFlowInvalid
-			}
 			var pendingPayload miniAppPendingIdentityPayload
 			if err := common.Unmarshal([]byte(pendingFlow.Payload), &pendingPayload); err != nil ||
 				pendingPayload.AppID != bindingPayload.AppID || pendingPayload.OpenIDHash != bindingPayload.OpenIDHash {
@@ -305,6 +306,20 @@ func ConfirmMiniAppBinding(pendingTicket, bindingTicket string, browserIdentity 
 // GetMiniAppBindingStatus returns only the pending, bound, or expired state
 // for a caller that proves possession of the pending ticket.
 func GetMiniAppBindingStatus(pendingTicket string) (string, error) {
+	return getMiniAppBindingStatus(pendingTicket, "")
+}
+
+// GetMiniAppBindingStatusForBinding returns the status of exactly one binding
+// after the Mini Program proves possession of the pending identity ticket.
+func GetMiniAppBindingStatusForBinding(pendingTicket, bindingID string) (string, error) {
+	bindingID = strings.TrimSpace(bindingID)
+	if bindingID == "" {
+		return "", model.ErrAuthFlowInvalid
+	}
+	return getMiniAppBindingStatus(pendingTicket, bindingID)
+}
+
+func getMiniAppBindingStatus(pendingTicket, bindingID string) (string, error) {
 	if _, err := RequireMiniProgramConfig(); err != nil {
 		return "", err
 	}
@@ -319,10 +334,16 @@ func GetMiniAppBindingStatus(pendingTicket string) (string, error) {
 		return "", model.ErrAuthFlowInvalid
 	}
 	var binding model.MiniAppBinding
-	bindingErr := model.DB.Where("pending_flow_id = ? AND app_id = ? AND open_id_hash = ?", flow.Id, payload.AppID, payload.OpenIDHash).
-		Order("created_at DESC").First(&binding).Error
+	bindingQuery := model.DB.Where("pending_flow_id = ? AND app_id = ? AND open_id_hash = ?", flow.Id, payload.AppID, payload.OpenIDHash)
+	if bindingID != "" {
+		bindingQuery = bindingQuery.Where("id = ?", bindingID)
+	}
+	bindingErr := bindingQuery.Order("created_at DESC").First(&binding).Error
 	if bindingErr != nil && !errors.Is(bindingErr, gorm.ErrRecordNotFound) {
 		return "", bindingErr
+	}
+	if bindingID != "" && errors.Is(bindingErr, gorm.ErrRecordNotFound) {
+		return "", model.ErrAuthFlowInvalid
 	}
 	if bindingErr == nil && binding.Status == model.MiniAppBindingStatusBound {
 		return model.MiniAppBindingStatusBound, nil
@@ -498,6 +519,8 @@ func MiniAppAuthErrorCode(err error) (int, string) {
 		return http.StatusBadGateway, "MINIAPP_PROVIDER_UNAVAILABLE"
 	case errors.Is(err, ErrMiniAppRegistrationDisabled), errors.Is(err, ErrMiniAppPasswordRegistration):
 		return http.StatusForbidden, "MINIAPP_REGISTRATION_DISABLED"
+	case errors.Is(err, ErrMiniAppBrowserSessionRequired):
+		return http.StatusForbidden, "MINIAPP_BROWSER_SESSION_REQUIRED"
 	case errors.Is(err, ErrMiniAppRegistrationInvalid), errors.Is(err, ErrMiniAppEmailVerification):
 		return http.StatusBadRequest, "MINIAPP_REGISTRATION_INVALID"
 	case errors.Is(err, model.ErrAuthFlowExpired), errors.Is(err, model.ErrMiniAppBindingExpired):

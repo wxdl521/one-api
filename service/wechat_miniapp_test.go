@@ -317,27 +317,39 @@ func TestMiniAppBindingRequiresBrowserSessionAndConsumesFlowsOnce(t *testing.T) 
 	binding, err := CreateMiniAppBinding(pending.PendingTicket)
 
 	require.NoError(t, err)
+	require.NotEmpty(t, binding.BindingID)
 	bindURL, err := url.Parse(binding.BindURL)
 	require.NoError(t, err)
-	assert.Equal(t, pending.PendingTicket, bindURL.Query().Get("ticket"))
+	assert.Len(t, bindURL.Query(), 1)
+	assert.Empty(t, bindURL.Query().Get("ticket"))
 	bindTicket := bindURL.Query().Get("binding_ticket")
 	require.NotEmpty(t, bindTicket)
 	_, err = model.GetAuthFlow(pending.PendingTicket, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin})
 	require.NoError(t, err, "creating a bind flow must not consume the pending ticket")
+	status, err := GetMiniAppBindingStatusForBinding(pending.PendingTicket, binding.BindingID)
+	require.NoError(t, err)
+	assert.Equal(t, model.MiniAppBindingStatusPending, status)
+	_, err = GetMiniAppBindingStatusForBinding(pending.PendingTicket, "other-binding")
+	assert.ErrorIs(t, err, model.ErrAuthFlowInvalid)
+	miniAppSession, err := CreateLoginSession(user.Id, "wechat-miniapp", "127.0.0.1", "miniapp-test")
+	require.NoError(t, err)
+	miniAppIdentity, err := ParseAccessToken(miniAppSession.AccessToken)
+	require.NoError(t, err)
+	assert.ErrorIs(t, ConfirmMiniAppBinding(bindTicket, miniAppIdentity), ErrMiniAppBrowserSessionRequired)
 
-	err = ConfirmMiniAppBinding(pending.PendingTicket, bindTicket, browserIdentity)
+	err = ConfirmMiniAppBinding(bindTicket, browserIdentity)
 
 	require.NoError(t, err)
-	status, err := GetMiniAppBindingStatus(pending.PendingTicket)
+	status, err = GetMiniAppBindingStatus(pending.PendingTicket)
 	require.NoError(t, err)
 	assert.Equal(t, model.MiniAppBindingStatusBound, status)
-	assert.ErrorIs(t, ConfirmMiniAppBinding(pending.PendingTicket, bindTicket, browserIdentity), model.ErrAuthFlowConsumed)
+	assert.ErrorIs(t, ConfirmMiniAppBinding(bindTicket, browserIdentity), model.ErrAuthFlowConsumed)
 	var identity model.WechatMiniIdentity
 	require.NoError(t, model.DB.First(&identity).Error)
 	assert.Equal(t, user.Id, identity.UserID)
 }
 
-func TestMiniAppBindingRejectsMixedPendingAndBindingTicketsWithoutConsumption(t *testing.T) {
+func TestMiniAppBindingRejectsCrossBoundTicketWithoutConsumption(t *testing.T) {
 	useTestSessionSecret(t)
 	user := setupAuthSessionTestDB(t)
 	useMiniAppExchangeTestConfig(t)
@@ -357,12 +369,26 @@ func TestMiniAppBindingRejectsMixedPendingAndBindingTicketsWithoutConsumption(t 
 	require.NoError(t, err)
 	bindingURL, err := url.Parse(binding.BindURL)
 	require.NoError(t, err)
+	bindFlow, err := model.GetAuthFlow(bindingURL.Query().Get("binding_ticket"), model.AuthFlowMatch{
+		Purpose: model.AuthFlowPurposeMiniAppBind, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentBind,
+	})
+	require.NoError(t, err)
+	var crossBoundPayload miniAppBindingFlowPayload
+	require.NoError(t, common.UnmarshalJsonStr(bindFlow.Payload, &crossBoundPayload))
+	crossBoundPayload.OpenIDHash = strings.Repeat("b", 64)
+	crossBoundRaw, err := common.Marshal(crossBoundPayload)
+	require.NoError(t, err)
+	crossBoundTicket, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose: model.AuthFlowPurposeMiniAppBind, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentBind,
+		Payload: string(crossBoundRaw), ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
 	browser, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "browser-test")
 	require.NoError(t, err)
 	browserIdentity, err := ParseAccessToken(browser.AccessToken)
 	require.NoError(t, err)
 
-	err = ConfirmMiniAppBinding(secondTicket, bindingURL.Query().Get("binding_ticket"), browserIdentity)
+	err = ConfirmMiniAppBinding(crossBoundTicket, browserIdentity)
 
 	assert.ErrorIs(t, err, model.ErrAuthFlowInvalid)
 	firstStatus, err := GetMiniAppBindingStatus(firstTicket)
@@ -403,7 +429,7 @@ func TestMiniAppBindingRejectsSubjectAlreadyHeldByAnotherUser(t *testing.T) {
 	browserIdentity, err := ParseAccessToken(browser.AccessToken)
 	require.NoError(t, err)
 
-	err = ConfirmMiniAppBinding(ticket, bindingURL.Query().Get("binding_ticket"), browserIdentity)
+	err = ConfirmMiniAppBinding(bindingURL.Query().Get("binding_ticket"), browserIdentity)
 
 	assert.ErrorIs(t, err, model.ErrWechatMiniIdentityAlreadyBound)
 	status, err := GetMiniAppBindingStatus(ticket)

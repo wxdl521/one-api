@@ -143,3 +143,27 @@ func TestConsumeAuthFlowWithTxRollsBackMultipleFlowConsumption(t *testing.T) {
 		assert.Nil(t, stored.ConsumedAt)
 	}
 }
+
+func TestConsumeAuthFlowByIDWithTxConsumesOnlyTheLinkedFlow(t *testing.T) {
+	truncateTables(t)
+	firstToken, firstFlow, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeMiniAppPendingIdentity, ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	secondToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeMiniAppPendingIdentity, ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		_, err := ConsumeAuthFlowByIDWithTx(tx, firstFlow.Id, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppPendingIdentity}, nil)
+		return err
+	})
+	require.NoError(t, err)
+
+	_, err = GetAuthFlow(firstToken, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppPendingIdentity})
+	assert.ErrorIs(t, err, ErrAuthFlowConsumed)
+	second, err := GetAuthFlow(secondToken, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppPendingIdentity})
+	require.NoError(t, err)
+	assert.Nil(t, second.ConsumedAt)
+}
