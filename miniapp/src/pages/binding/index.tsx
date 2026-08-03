@@ -9,195 +9,87 @@ import {
   loginWithWechat,
 } from '../../features/auth/auth-service'
 import { t } from '../../i18n/strings'
+import { BindingLifecycle, type BindingFailureKey } from './lifecycle'
 import './index.scss'
-
-const bindingPollIntervalMs = 3_000
-const bindingTimeoutMs = 5 * 60 * 1_000
 
 export default function BindingPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [webUrl, setWebUrl] = useState<string | null>(null)
-  const bindingIdRef = useRef<string | null>(null)
-  const deadlineRef = useRef(0)
-  const foregroundRef = useRef(false)
-  const hasStartedRef = useRef(false)
-  const isCompletingRef = useRef(false)
-  const isExpiredRef = useRef(false)
-  const isPollInFlightRef = useRef(false)
-  const isStoppedRef = useRef(false)
-  const deadlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current !== null) {
-      clearInterval(pollTimerRef.current)
-      pollTimerRef.current = null
-    }
-  }, [])
-
-  const stopDeadline = useCallback(() => {
-    if (deadlineTimerRef.current !== null) {
-      clearTimeout(deadlineTimerRef.current)
-      deadlineTimerRef.current = null
-    }
-  }, [])
-
-  const expireBinding = useCallback(() => {
-    if (isExpiredRef.current || isStoppedRef.current) {
-      return
-    }
-    isExpiredRef.current = true
-    isStoppedRef.current = true
-    stopPolling()
-    stopDeadline()
-    setWebUrl(null)
-    setLoading(false)
-    setError(t('bindingExpired'))
-  }, [stopDeadline, stopPolling])
-
-  const restartAuthentication = useCallback(async () => {
-    isStoppedRef.current = true
-    stopPolling()
-    stopDeadline()
-    clearPendingIdentityTicket()
-    await Taro.reLaunch({ url: '/pages/index/index' })
-  }, [stopDeadline, stopPolling])
+  const authAttemptRef = useRef(0)
+  const completeBindingRef = useRef<() => void>(() => undefined)
+  const isMountedRef = useRef(true)
+  const lifecycleRef = useRef<BindingLifecycle | null>(null)
 
   const completeBinding = useCallback(async () => {
-    if (isCompletingRef.current) {
-      return
-    }
-    isCompletingRef.current = true
-    isStoppedRef.current = true
-    stopPolling()
-    stopDeadline()
+    const attempt = authAttemptRef.current
     setLoading(true)
     try {
       const outcome = await loginWithWechat()
+      if (!isMountedRef.current || attempt !== authAttemptRef.current) {
+        return
+      }
       if (outcome.kind !== 'authenticated') {
         throw new Error('binding did not create a normal session')
       }
       await Taro.reLaunch({ url: '/pages/account/index' })
     } catch {
+      if (!isMountedRef.current || attempt !== authAttemptRef.current) {
+        return
+      }
       setWebUrl(null)
       setError(t('bindingFailed'))
       setLoading(false)
     }
-  }, [stopDeadline, stopPolling])
+  }, [])
+  completeBindingRef.current = () => {
+    void completeBinding()
+  }
 
-  const pollBinding = useCallback(async () => {
-    const bindingId = bindingIdRef.current
-    if (
-      !foregroundRef.current ||
-      bindingId === null ||
-      isExpiredRef.current ||
-      isCompletingRef.current ||
-      isPollInFlightRef.current ||
-      isStoppedRef.current
-    ) {
-      return
-    }
-    isPollInFlightRef.current = true
-    if (Date.now() >= deadlineRef.current) {
-      expireBinding()
-      isPollInFlightRef.current = false
-      return
-    }
-    try {
-      const status = await getBindingStatus(bindingId)
-      if (Date.now() >= deadlineRef.current) {
-        expireBinding()
-        return
-      }
-      if (!foregroundRef.current || isStoppedRef.current) {
-        return
-      }
-      if (status === 'bound') {
-        await completeBinding()
-        return
-      }
-      if (status === 'expired') {
-        expireBinding()
-      }
-    } catch {
-      isStoppedRef.current = true
-      stopPolling()
-      stopDeadline()
-      setWebUrl(null)
-      setLoading(false)
-      setError(t('bindingFailed'))
-    } finally {
-      isPollInFlightRef.current = false
-    }
-  }, [completeBinding, expireBinding, stopDeadline, stopPolling])
+  if (lifecycleRef.current === null) {
+    lifecycleRef.current = new BindingLifecycle({
+      createBinding,
+      getStatus: getBindingStatus,
+      onBound: () => completeBindingRef.current(),
+      onError: (key: BindingFailureKey) => {
+        setWebUrl(null)
+        setLoading(false)
+        setError(t(key))
+      },
+      onLoading: () => {
+        setLoading(true)
+        setError(null)
+      },
+      onReady: (nextWebUrl) => {
+        setWebUrl(nextWebUrl)
+        setLoading(false)
+      },
+    })
+  }
 
-  const startPolling = useCallback(() => {
-    if (!foregroundRef.current || pollTimerRef.current !== null || isExpiredRef.current || isStoppedRef.current) {
-      return
-    }
-    void pollBinding()
-    pollTimerRef.current = setInterval(() => {
-      void pollBinding()
-    }, bindingPollIntervalMs)
-  }, [pollBinding])
-
-  const startBinding = useCallback(async () => {
-    if (hasStartedRef.current || isExpiredRef.current) {
-      return
-    }
-    hasStartedRef.current = true
-    setLoading(true)
-    setError(null)
-    try {
-      const binding = await createBinding()
-      bindingIdRef.current = binding.bindingId
-      deadlineRef.current = Date.now() + bindingTimeoutMs
-      deadlineTimerRef.current = setTimeout(expireBinding, bindingTimeoutMs)
-      setWebUrl(binding.webUrl)
-      setLoading(false)
-      startPolling()
-    } catch {
-      isStoppedRef.current = true
-      stopPolling()
-      stopDeadline()
-      setLoading(false)
-      setError(t('bindingFailed'))
-    }
-  }, [expireBinding, startPolling, stopDeadline, stopPolling])
+  const restartAuthentication = useCallback(async () => {
+    authAttemptRef.current += 1
+    lifecycleRef.current?.cancel()
+    clearPendingIdentityTicket()
+    await Taro.reLaunch({ url: '/pages/index/index' })
+  }, [])
 
   useDidShow(() => {
-    foregroundRef.current = true
-    if (hasStartedRef.current) {
-      startPolling()
-      return
-    }
-    void startBinding()
+    void lifecycleRef.current?.show()
   })
 
   useDidHide(() => {
-    foregroundRef.current = false
-    stopPolling()
+    lifecycleRef.current?.hide()
   })
 
   useUnload(() => {
-    foregroundRef.current = false
-    isStoppedRef.current = true
-    stopPolling()
-    stopDeadline()
+    isMountedRef.current = false
+    authAttemptRef.current += 1
+    lifecycleRef.current?.unload()
   })
 
-  const handleWebViewError = () => {
-    isStoppedRef.current = true
-    stopPolling()
-    stopDeadline()
-    setWebUrl(null)
-    setLoading(false)
-    setError(t('bindingWebViewFailed'))
-  }
-
   if (webUrl !== null) {
-    return <WebView src={webUrl} onError={handleWebViewError} />
+    return <WebView src={webUrl} onError={() => lifecycleRef.current?.webViewFailed()} />
   }
 
   return (

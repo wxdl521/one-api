@@ -1,4 +1,5 @@
 const apiBaseUrl = process.env.TARO_APP_API_BASE_URL ?? ''
+const bindingOrigin = process.env.TARO_APP_MINIAPP_BINDING_ORIGIN ?? ''
 
 export default {
   projectName: 'miniapp',
@@ -15,5 +16,6 @@ export default {
   compiler: 'webpack5',
   defineConstants: {
     __MINIAPP_API_BASE_URL__: JSON.stringify(apiBaseUrl),
+    __MINIAPP_BINDING_ORIGIN__: JSON.stringify(bindingOrigin),
   },
 }
