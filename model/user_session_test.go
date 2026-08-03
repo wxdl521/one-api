@@ -41,6 +41,40 @@ func (setMiniRedisTimeOnEvalHook) AfterProcessPipeline(context.Context, []redis.
 	return nil
 }
 
+type failUserSessionCacheStatusHook struct {
+	status   string
+	err      error
+	attempts int
+}
+
+func (hook *failUserSessionCacheStatusHook) BeforeProcess(ctx context.Context, cmd redis.Cmder) (context.Context, error) {
+	if cmd.Name() != "eval" {
+		return ctx, nil
+	}
+	args := cmd.Args()
+	if len(args) <= 8 {
+		return ctx, nil
+	}
+	status, ok := args[8].(string)
+	if !ok || status != hook.status {
+		return ctx, nil
+	}
+	hook.attempts++
+	return ctx, hook.err
+}
+
+func (*failUserSessionCacheStatusHook) AfterProcess(context.Context, redis.Cmder) error {
+	return nil
+}
+
+func (*failUserSessionCacheStatusHook) BeforeProcessPipeline(ctx context.Context, _ []redis.Cmder) (context.Context, error) {
+	return ctx, nil
+}
+
+func (*failUserSessionCacheStatusHook) AfterProcessPipeline(context.Context, []redis.Cmder) error {
+	return nil
+}
+
 func setupUserSessionTest(t *testing.T) {
 	t.Helper()
 	require.NoError(t, DB.AutoMigrate(&User{}, &UserSession{}))
@@ -357,6 +391,64 @@ func TestRenewMiniAppUserSessionHasOneWinnerAndRollsBackOnCreateFailure(t *testi
 		var successorCount int64
 		require.NoError(t, DB.Model(&UserSession{}).Where("sid = ?", successor.SID).Count(&successorCount).Error)
 		assert.Zero(t, successorCount)
+	})
+
+	t.Run("cached prior is fenced before successor commits", func(t *testing.T) {
+		setupUserSessionTest(t)
+		useUserCacheMiniRedis(t)
+		const userID = 1015
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-cached-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		_, err := GetUserSessionCached(prior.SID)
+		require.NoError(t, err)
+		finalizeFailure := errors.New("forced final miniapp deny-cache publication failure")
+		hook := &failUserSessionCacheStatusHook{status: UserSessionStatusRevoked, err: finalizeFailure}
+		common.RDB.AddHook(hook)
+		successor := newTestUserSession("miniapp-renew-cached-successor", userID, now)
+		successor.LoginMethod = "wechat-miniapp"
+
+		_, err = RenewMiniAppUserSession(userID, prior.SID, successor)
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, hook.attempts)
+		_, err = GetUserSessionCached(prior.SID)
+		assert.ErrorIs(t, err, ErrUserSessionInactive)
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusRevoked, storedPrior.Status)
+	})
+
+	t.Run("deny-fence failure aborts renewal before database mutation", func(t *testing.T) {
+		setupUserSessionTest(t)
+		useUserCacheMiniRedis(t)
+		const userID = 1016
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-deny-failure-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		denyFailure := errors.New("forced miniapp deny-fence publication failure")
+		hook := &failUserSessionCacheStatusHook{status: UserSessionStatusRevoking, err: denyFailure}
+		common.RDB.AddHook(hook)
+		successor := newTestUserSession("miniapp-renew-deny-failure-successor", userID, now)
+		successor.LoginMethod = "wechat-miniapp"
+
+		_, err := RenewMiniAppUserSession(userID, prior.SID, successor)
+
+		require.ErrorIs(t, err, denyFailure)
+		assert.Equal(t, 1, hook.attempts)
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusActive, storedPrior.Status)
+		var successorCount int64
+		require.NoError(t, DB.Model(&UserSession{}).Where("sid = ?", successor.SID).Count(&successorCount).Error)
+		assert.Zero(t, successorCount)
+		cachedPrior, err := GetUserSessionCached(prior.SID)
+		require.NoError(t, err)
+		assert.Equal(t, prior.SID, cachedPrior.SID)
 	})
 }
 

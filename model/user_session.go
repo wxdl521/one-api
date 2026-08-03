@@ -189,6 +189,24 @@ func RenewMiniAppUserSession(userID int, priorSID string, successor *UserSession
 		successor.LastActiveAt = now
 	}
 
+	var fenceCandidate UserSession
+	if err := DB.Where("sid = ? AND user_id = ?", priorSID, userID).First(&fenceCandidate).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserSessionInactive
+		}
+		return nil, err
+	}
+	if fenceCandidate.LoginMethod != "wechat-miniapp" || fenceCandidate.Status != UserSessionStatusActive ||
+		fenceCandidate.RevokedAt != 0 || fenceCandidate.ExpiresAt <= now {
+		return nil, ErrUserSessionInactive
+	}
+	// Publish the deny fence before committing the successor. If Redis cannot
+	// deny the prior SID, leave the database untouched rather than committing a
+	// renewal that a stale active cache could still authorize.
+	if err := writeUserSessionDenyFence(&fenceCandidate, UserSessionStatusRevoking, now, "miniapp_renewed"); err != nil {
+		return nil, err
+	}
+
 	var prior UserSession
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := lockForUpdate(tx).Where("sid = ? AND user_id = ?", priorSID, userID).First(&prior).Error; err != nil {
