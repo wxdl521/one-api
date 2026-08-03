@@ -212,6 +212,28 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
 		}
 
+		productRoute := apiRouter.Group("/product")
+		productRoute.Use(middleware.UserAuth())
+		{
+			productRoute.GET("", controller.ListProducts)
+			productRoute.POST("/orders", controller.CreateProductOrder)
+			productRoute.GET("/orders/self", controller.ListSelfProductOrders)
+			productRoute.GET("/:id", controller.GetProduct)
+		}
+		productAdminRoute := apiRouter.Group("/product/admin")
+		productAdminRoute.Use(middleware.AdminAuth())
+		{
+			productAdminRoute.GET("", controller.AdminListProducts)
+			productAdminRoute.POST("/upload", controller.AdminUploadProductImage)
+			productAdminRoute.POST("", controller.AdminCreateProduct)
+			productAdminRoute.PUT("/:id", controller.AdminUpdateProduct)
+			productAdminRoute.PATCH("/:id/status", controller.AdminUpdateProductStatus)
+			productAdminRoute.GET("/orders", controller.AdminListProductOrders)
+			productAdminRoute.PATCH("/orders/:id/confirm", controller.AdminConfirmProductOrder)
+			productAdminRoute.PATCH("/orders/:id/ship", controller.AdminShipProductOrder)
+			productAdminRoute.PATCH("/orders/:id/cancel", controller.AdminCancelProductOrder)
+		}
+
 		// Subscription payment callbacks (no auth)
 		apiRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
