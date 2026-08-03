@@ -48,4 +48,7 @@ func cleanupAuthArtifacts() {
 	if err := model.DeleteExpiredAuthFlows(now); err != nil {
 		common.SysError("failed to delete expired authentication flows: " + err.Error())
 	}
+	if err := model.ExpireAndDeleteMiniAppBindings(now); err != nil {
+		common.SysError("failed to expire and delete mini app bindings: " + err.Error())
+	}
 }
