@@ -29,6 +29,7 @@ func SetMiniAppRouter(router *gin.Engine) {
 		protected.Use(middleware.MiniAppAuth(), middleware.MiniAppAuthenticatedUserRateLimit())
 		{
 			protected.POST("/auth/logout", controller.MiniAppLogout)
+			protected.GET("/me/overview", controller.MiniAppAccountOverview)
 		}
 	}
 

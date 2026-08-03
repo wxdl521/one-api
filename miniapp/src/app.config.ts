@@ -1,6 +1,7 @@
 import { miniAppStrings } from './i18n/strings'
 
 const appConfig = {
+  entryPagePath: 'pages/index/index',
   pages: [
     'pages/index/index',
     'pages/login/index',

@@ -1,0 +1,72 @@
+.account-shell {
+  background: #f8fafc;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  min-height: 100vh;
+  padding: 40rpx 32rpx;
+}
+
+.account-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.account-title {
+  color: #111827;
+  font-size: 40rpx;
+  font-weight: 600;
+}
+
+.account-refresh {
+  font-size: 26rpx;
+  margin: 0;
+}
+
+.account-loading,
+.account-error,
+.account-value,
+.account-username,
+.account-email,
+.account-subscription-quota {
+  color: #4b5563;
+  font-size: 28rpx;
+}
+
+.account-error {
+  color: #b91c1c;
+}
+
+.account-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.account-card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  padding: 28rpx;
+}
+
+.account-name,
+.account-quota {
+  color: #111827;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.account-label {
+  color: #6b7280;
+  font-size: 24rpx;
+}
+
+.account-subscription {
+  display: flex;
+  justify-content: space-between;
+}
