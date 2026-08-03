@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,4 +143,23 @@ func TestMiniAppAuthRejectsRequestsWhenTheFeatureIsDisabled(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, response.Code)
 	assert.Contains(t, response.Body.String(), "MINIAPP_DISABLED")
+}
+
+func TestMiniAppBindingRequestBodyLimitRejectsOversizedRequestsBeforeHandlers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handlerCalled := false
+	router.POST("/confirm", MiniAppBindingRequestBodyLimit(), func(c *gin.Context) {
+		handlerCalled = true
+		c.Status(http.StatusNoContent)
+	})
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/confirm", strings.NewReader(strings.Repeat("x", miniAppBindingRequestBodyMaxBytes+1)))
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	assert.False(t, handlerCalled)
+	assert.Contains(t, response.Body.String(), "MINIAPP_REQUEST_TOO_LARGE")
+	assert.NotContains(t, response.Body.String(), "x")
 }

@@ -14,13 +14,15 @@ var ErrMiniProgramDisabled = errors.New("mini program is disabled")
 var ErrMiniProgramTextTestDisabled = errors.New("mini program text testing is disabled")
 var ErrMiniAppConfiguration = errors.New("mini program configuration is incomplete")
 
+const miniAppBindWebPath = "/miniapp-bind"
+
 // MiniAppConfig contains Mini Program configuration. The server-only secrets
 // are deliberately unexported and excluded from serialization. The subject
 // HMAC key must remain stable across restarts; rotating its v1 value requires
 // an explicit identity migration.
 type MiniAppConfig struct {
 	AppID          string        `json:"-"`
-	BindWebBaseURL string        `json:"-"`
+	BindWebBaseURL string        `json:"-"` // Must resolve to the frontend's fixed /miniapp-bind route.
 	HTTPTimeout    time.Duration `json:"-"`
 	appSecret      string
 	subjectHMACKey string
@@ -88,6 +90,9 @@ func newMiniAppConfig(appID string, appSecret string, subjectHMACKey string, bin
 	}
 
 	bindURL.Path = strings.TrimRight(bindURL.Path, "/")
+	if bindURL.Path != miniAppBindWebPath || bindURL.RawPath != "" {
+		return MiniAppConfig{}, ErrMiniAppConfiguration
+	}
 	bindURL.RawPath = ""
 	return MiniAppConfig{
 		AppID:          appID,

@@ -33,7 +33,7 @@ func useMiniAppExchangeTestConfig(t *testing.T) {
 	common.WeChatMiniAppAppID = "wx-test-app"
 	common.WeChatMiniAppAppSecret = "miniapp-test-secret"
 	common.WeChatMiniAppSubjectHMACKey = "miniapp-test-subject-hmac-key-v1"
-	common.MiniAppBindWebBaseURL = "https://console.example.com/miniapp/bind"
+	common.MiniAppBindWebBaseURL = "https://console.example.com/miniapp-bind"
 	common.MiniAppHTTPTimeout = time.Second
 	common.OptionMapRWMutex.Lock()
 	common.MiniProgramEnabled = true

@@ -183,7 +183,7 @@ func TestNewMiniAppConfigRejectsMissingCredentialsWithoutExposingSecrets(t *test
 				credentials.appID,
 				credentials.appSecret,
 				"subject-hmac-key",
-				"https://console.example.com/miniapp/bind/",
+				"https://console.example.com/miniapp-bind/",
 				10*time.Second,
 				false,
 			)
@@ -203,6 +203,8 @@ func TestNewMiniAppConfigRejectsInvalidBindWebBaseURL(t *testing.T) {
 		"missing host":                   "https:///miniapp/bind",
 		"query string":                   "https://console.example.com/miniapp/bind?next=https://attacker.example",
 		"fragment":                       "https://console.example.com/miniapp/bind#fragment",
+		"wrong binding path":             "https://console.example.com/miniapp/bind",
+		"nested binding path":            "https://console.example.com/miniapp-bind/confirm",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := newMiniAppConfig("wx123", "super-secret", "subject-hmac-key", bindWebBaseURL, 10*time.Second, false)
@@ -218,14 +220,14 @@ func TestNewMiniAppConfigNormalizesAndRedactsConfiguration(t *testing.T) {
 		"wx123",
 		"super-secret",
 		"subject-hmac-key",
-		"https://CONSOLE.example.com/miniapp/bind///",
+		"https://CONSOLE.example.com/miniapp-bind///",
 		12*time.Second,
 		false,
 	)
 	require.NoError(t, err)
 
 	assert.Equal(t, "wx123", config.AppID)
-	assert.Equal(t, "https://console.example.com/miniapp/bind", config.BindWebBaseURL)
+	assert.Equal(t, "https://console.example.com/miniapp-bind", config.BindWebBaseURL)
 	assert.Equal(t, 12*time.Second, config.HTTPTimeout)
 
 	serialized, err := common.Marshal(config)
@@ -239,12 +241,12 @@ func TestNewMiniAppConfigAllowsHTTPOnlyForLocalDevelopment(t *testing.T) {
 		"wx123",
 		"super-secret",
 		"subject-hmac-key",
-		"http://localhost:3000/miniapp/bind/",
+		"http://localhost:3000/miniapp-bind/",
 		10*time.Second,
 		true,
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "http://localhost:3000/miniapp/bind", config.BindWebBaseURL)
+	assert.Equal(t, "http://localhost:3000/miniapp-bind", config.BindWebBaseURL)
 }
 
 func TestNewMiniAppConfigRequiresASeparateSubjectHMACKey(t *testing.T) {
@@ -252,7 +254,7 @@ func TestNewMiniAppConfigRequiresASeparateSubjectHMACKey(t *testing.T) {
 		"wx123",
 		"super-secret",
 		"",
-		"https://console.example.com/miniapp/bind",
+		"https://console.example.com/miniapp-bind",
 		10*time.Second,
 		false,
 	)
@@ -264,11 +266,11 @@ func TestNewMiniAppConfigRequiresASeparateSubjectHMACKey(t *testing.T) {
 
 func TestWechatMiniSubjectDigestIsStableAcrossConfigReloads(t *testing.T) {
 	firstConfig, err := newMiniAppConfig(
-		"wx123", "app-secret", "persistent-subject-key-v1", "https://console.example.com/miniapp/bind", 10*time.Second, false,
+		"wx123", "app-secret", "persistent-subject-key-v1", "https://console.example.com/miniapp-bind", 10*time.Second, false,
 	)
 	require.NoError(t, err)
 	secondConfig, err := newMiniAppConfig(
-		"wx123", "another-app-secret", "persistent-subject-key-v1", "https://console.example.com/miniapp/bind", 10*time.Second, false,
+		"wx123", "another-app-secret", "persistent-subject-key-v1", "https://console.example.com/miniapp-bind", 10*time.Second, false,
 	)
 	require.NoError(t, err)
 

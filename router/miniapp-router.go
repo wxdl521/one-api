@@ -34,6 +34,7 @@ func SetMiniAppRouter(router *gin.Engine) {
 	browserBinding := router.Group("/api/miniapp/bindings")
 	browserBinding.Use(middleware.RouteTag("api"))
 	browserBinding.Use(middleware.BodyStorageCleanup())
+	browserBinding.Use(middleware.MiniAppBindingRequestBodyLimit())
 	browserBinding.Use(middleware.UserAuth(), middleware.CriticalRateLimit())
 	{
 		browserBinding.POST("/confirm", controller.ConfirmMiniAppBrowserBinding)

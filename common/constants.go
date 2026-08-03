@@ -49,6 +49,8 @@ var WeChatMiniAppAppSecret = ""
 // generated from the process/session secret because identity mappings must
 // survive restarts.
 var WeChatMiniAppSubjectHMACKey = ""
+
+// MiniAppBindWebBaseURL must be an absolute URL whose path is /miniapp-bind.
 var MiniAppBindWebBaseURL = ""
 var MiniAppHTTPTimeout = DefaultMiniAppHTTPTimeout
 
