@@ -1,0 +1,112 @@
+.tokens-shell {
+  background: #f8fafc;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  min-height: 100vh;
+  padding: 40rpx 32rpx;
+}
+
+.tokens-title,
+.tokens-item-name {
+  color: #111827;
+  font-size: 40rpx;
+  font-weight: 600;
+}
+
+.tokens-form,
+.tokens-item,
+.tokens-key-card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 28rpx;
+}
+
+.tokens-field-label,
+.tokens-item-detail,
+.tokens-loading,
+.tokens-empty,
+.tokens-key-label {
+  color: #4b5563;
+  font-size: 26rpx;
+}
+
+.tokens-form input,
+.tokens-picker {
+  border: 1rpx solid #d1d5db;
+  border-radius: 10rpx;
+  box-sizing: border-box;
+  color: #111827;
+  font-size: 28rpx;
+  min-height: 76rpx;
+  padding: 18rpx 20rpx;
+}
+
+.tokens-error {
+  color: #b91c1c;
+  font-size: 26rpx;
+}
+
+.tokens-key-card {
+  background: #fffbeb;
+  border: 1rpx solid #f59e0b;
+}
+
+.tokens-key-warning {
+  color: #92400e;
+  font-size: 28rpx;
+}
+
+.tokens-key-value,
+.tokens-item-key {
+  color: #111827;
+  font-family: monospace;
+  font-size: 26rpx;
+  overflow-wrap: anywhere;
+}
+
+.tokens-key-actions,
+.tokens-item-actions,
+.tokens-item-header {
+  align-items: center;
+  display: flex;
+  gap: 16rpx;
+  justify-content: space-between;
+}
+
+.tokens-primary-button,
+.tokens-secondary-button,
+.tokens-danger-button {
+  font-size: 26rpx;
+  margin: 0;
+}
+
+.tokens-primary-button {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.tokens-secondary-button {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.tokens-danger-button {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.tokens-item-status {
+  color: #4b5563;
+  font-size: 24rpx;
+}
+
+.tokens-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}

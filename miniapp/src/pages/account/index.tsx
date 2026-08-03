@@ -61,6 +61,9 @@ export default function AccountPage() {
 
       {overview !== null && (
         <View className="account-content">
+          <Button className="account-refresh" onClick={() => void Taro.navigateTo({ url: '/pages/tokens/index' })}>
+            {t('tokens')}
+          </Button>
           <View className="account-card">
             <Text className="account-name">{overview.displayName || overview.username}</Text>
             <Text className="account-username">{overview.username}</Text>

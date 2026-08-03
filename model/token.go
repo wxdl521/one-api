@@ -28,8 +28,11 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	Source             string         `json:"source" gorm:"type:varchar(32);index"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
+
+const TokenSourceMiniApp = "miniapp"
 
 func (token *Token) Clean() {
 	token.Key = ""
@@ -83,6 +86,43 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var err error
 	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
+}
+
+// GetMiniAppUserTokens returns only tokens created through the Mini Program.
+// The source predicate complements the user predicate so a caller can never
+// enumerate dashboard-created tokens through the Mini Program surface.
+func GetMiniAppUserTokens(userId int, startIdx int, num int) ([]*Token, int64, error) {
+	if userId <= 0 {
+		return nil, 0, errors.New("user id is empty")
+	}
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if num <= 0 || num > searchHardLimit {
+		num = searchHardLimit
+	}
+
+	query := DB.Where("user_id = ? AND source = ?", userId, TokenSourceMiniApp)
+	var total int64
+	if err := query.Model(&Token{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var tokens []*Token
+	if err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error; err != nil {
+		return nil, 0, err
+	}
+	return tokens, total, nil
+}
+
+// GetMiniAppUserTokenByID is the ownership and source boundary for every
+// Mini Program mutation. Callers must not use the generic token lookup here.
+func GetMiniAppUserTokenByID(userId int, id int) (*Token, error) {
+	if userId <= 0 || id <= 0 {
+		return nil, errors.New("token id or user id is empty")
+	}
+	token := &Token{}
+	err := DB.Where("id = ? AND user_id = ? AND source = ?", id, userId, TokenSourceMiniApp).First(token).Error
+	return token, err
 }
 
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。

@@ -49,6 +49,17 @@ func GetGroupEnabledModels(group string) []string {
 	return models
 }
 
+// GetEnabledModelsForGroup is the error-returning form used by restricted
+// clients that must fail closed when model availability cannot be verified.
+func GetEnabledModelsForGroup(group string) ([]string, error) {
+	var models []string
+	err := DB.Model(&Ability{}).
+		Where(&Ability{Group: group, Enabled: true}).
+		Distinct("model").
+		Pluck("model", &models).Error
+	return models, err
+}
+
 func GetEnabledModels() []string {
 	var models []string
 	// Find distinct models

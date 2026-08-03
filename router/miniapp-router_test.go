@@ -30,6 +30,10 @@ func TestMiniAppRouterKeepsTheBFFAndBrowserConfirmationRoutesSeparate(t *testing
 		http.MethodPost + " /api/miniapp/v1/auth/renew",
 		http.MethodPost + " /api/miniapp/v1/auth/logout",
 		http.MethodGet + " /api/miniapp/v1/me/overview",
+		http.MethodGet + " /api/miniapp/v1/tokens",
+		http.MethodPost + " /api/miniapp/v1/tokens",
+		http.MethodPatch + " /api/miniapp/v1/tokens/:id/status",
+		http.MethodDelete + " /api/miniapp/v1/tokens/:id",
 		http.MethodPost + " /api/miniapp/bindings/confirm",
 	} {
 		_, found := routes[route]
