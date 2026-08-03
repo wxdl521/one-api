@@ -312,11 +312,19 @@ func GetMiniAppBindingStatus(pendingTicket string) (string, error) {
 	if bindingErr == nil && binding.Status == model.MiniAppBindingStatusBound {
 		return model.MiniAppBindingStatusBound, nil
 	}
+	var identity model.WechatMiniIdentity
+	identityErr := model.DB.Where("app_id = ? AND open_id_hash = ?", payload.AppID, payload.OpenIDHash).First(&identity).Error
+	if identityErr == nil {
+		return model.MiniAppBindingStatusBound, nil
+	}
+	if !errors.Is(identityErr, gorm.ErrRecordNotFound) {
+		return "", identityErr
+	}
 	if !flow.ExpiresAt.After(time.Now()) || bindingErr == nil && binding.Status == model.MiniAppBindingStatusExpired {
 		return model.MiniAppBindingStatusExpired, nil
 	}
 	if flow.ConsumedAt != nil {
-		return "", model.ErrAuthFlowConsumed
+		return model.MiniAppBindingStatusExpired, nil
 	}
 	return model.MiniAppBindingStatusPending, nil
 }

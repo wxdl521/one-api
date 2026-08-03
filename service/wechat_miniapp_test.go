@@ -338,7 +338,7 @@ func TestMiniAppBindingRejectsSubjectAlreadyHeldByAnotherUser(t *testing.T) {
 	assert.ErrorIs(t, err, model.ErrWechatMiniIdentityAlreadyBound)
 	status, err := GetMiniAppBindingStatus(ticket)
 	require.NoError(t, err)
-	assert.Equal(t, model.MiniAppBindingStatusPending, status)
+	assert.Equal(t, model.MiniAppBindingStatusBound, status)
 }
 
 func TestRegisterMiniAppUserUsesPendingTicketAndNormalPasswordRules(t *testing.T) {
@@ -368,6 +368,9 @@ func TestRegisterMiniAppUserUsesPendingTicketAndNormalPasswordRules(t *testing.T
 	assert.True(t, common.ValidatePasswordAndHash("valid-password", user.Password))
 	var identity model.WechatMiniIdentity
 	require.NoError(t, model.DB.Where("user_id = ?", user.Id).First(&identity).Error)
+	status, err := GetMiniAppBindingStatus(pending.PendingTicket)
+	require.NoError(t, err)
+	assert.Equal(t, model.MiniAppBindingStatusBound, status)
 	_, err = RegisterMiniAppUser(pending.PendingTicket, MiniAppRegistration{
 		Username: "another-user", Password: "valid-password",
 	}, "127.0.0.1", "miniapp-test")
@@ -409,6 +412,27 @@ func TestRegisterMiniAppUserPreservesRegistrationFeatureAndVerificationChecks(t 
 		Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin,
 	})
 	assert.NoError(t, err, "registration validation failures must not consume the pending ticket")
+}
+
+func TestMiniAppBindingStatusMapsConsumedTicketWithoutIdentityToExpired(t *testing.T) {
+	setupAuthSessionTestDB(t)
+	useMiniAppExchangeTestConfig(t)
+	payload, err := common.Marshal(miniAppPendingIdentityPayload{AppID: "wx-test-app", OpenIDHash: strings.Repeat("e", 64)})
+	require.NoError(t, err)
+	ticket, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider,
+		Intent: model.AuthFlowIntentLogin, Payload: string(payload), ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	_, err = model.ConsumeAuthFlow(ticket, model.AuthFlowMatch{
+		Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin,
+	})
+	require.NoError(t, err)
+
+	status, err := GetMiniAppBindingStatus(ticket)
+
+	require.NoError(t, err)
+	assert.Equal(t, model.MiniAppBindingStatusExpired, status)
 }
 
 func TestRenewMiniAppLoginRechecksCodeAndOnlyRevokesOwnedMiniSession(t *testing.T) {
