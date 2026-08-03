@@ -11,6 +11,7 @@ function shouldReturnToLogin(error: unknown): boolean {
   return error instanceof MiniAppApiError && (
     error.status === 401 ||
     error.code === 'MINIAPP_SESSION_INVALID' ||
+    error.code === 'MINIAPP_SESSION_UNAVAILABLE' ||
     error.code === 'AUTH_UNAUTHORIZED'
   )
 }

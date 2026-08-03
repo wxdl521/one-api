@@ -121,8 +121,11 @@ describe('AccountPage overview', () => {
     expect(getButton(renderer!, t('refresh')).props.disabled).not.toBe(true)
   })
 
-  it('returns to login when the server revokes the Mini Program session', async () => {
-    accountService.getAccountOverview.mockRejectedValue(new MiniAppApiError('MINIAPP_SESSION_INVALID', 'Unauthorized', 401))
+  it.each([
+    ['MINIAPP_SESSION_INVALID', 401],
+    ['MINIAPP_SESSION_UNAVAILABLE', 0],
+  ])('returns to login when the Mini Program session is unavailable: %s', async (code, status) => {
+    accountService.getAccountOverview.mockRejectedValue(new MiniAppApiError(code, 'Unauthorized', status))
     await act(async () => {
       create(<AccountPage />)
       await flushPromises()

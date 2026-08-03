@@ -1,12 +1,15 @@
 package service
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/the-one/common"
 	"github.com/QuantumNous/the-one/model"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -32,6 +35,25 @@ func setupMiniAppAccountServiceTest(t *testing.T) {
 		model.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
+	})
+}
+
+func useMiniAppAccountRedis(t *testing.T) {
+	t.Helper()
+	previousRedisEnabled := common.RedisEnabled
+	previousRedisClient := common.RDB
+	previousSyncFrequency := common.SyncFrequency
+	redisServer := miniredis.RunT(t)
+	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	require.NoError(t, redisClient.Ping(t.Context()).Err())
+	common.RedisEnabled = true
+	common.RDB = redisClient
+	common.SyncFrequency = 60
+	t.Cleanup(func() {
+		_ = redisClient.Close()
+		common.RedisEnabled = previousRedisEnabled
+		common.RDB = previousRedisClient
+		common.SyncFrequency = previousSyncFrequency
 	})
 }
 
@@ -67,4 +89,29 @@ func TestGetMiniAppAccountOverviewUsesTheCurrentAccountAndActiveSubscriptions(t 
 	require.Len(t, overview.Subscriptions, 1)
 	assert.Equal(t, "Active Plan", overview.Subscriptions[0].PlanTitle)
 	assert.Equal(t, int64(2500), overview.Subscriptions[0].Quota.Remaining)
+}
+
+func TestGetMiniAppAccountOverviewUsesTheCachedQuotaDuringBatchUpdates(t *testing.T) {
+	setupMiniAppAccountServiceTest(t)
+	useMiniAppAccountRedis(t)
+	previousBatchUpdateEnabled := common.BatchUpdateEnabled
+	common.BatchUpdateEnabled = true
+	t.Cleanup(func() {
+		common.BatchUpdateEnabled = previousBatchUpdateEnabled
+	})
+
+	user := &model.User{
+		Username: "cached-quota-mini-user", Password: "password-placeholder", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", Quota: 67890, AuthVersion: 1, AffCode: "cached-quota-aff",
+	}
+	require.NoError(t, model.DB.Create(user).Error)
+	cachedUser := user.ToBaseUser()
+	cachedUser.Quota = 54321
+	require.NoError(t, common.RedisHSetObj(fmt.Sprintf("user:%d", user.Id), cachedUser, time.Minute))
+
+	overview, err := GetMiniAppAccountOverview(user.Id)
+
+	require.NoError(t, err)
+	assert.Equal(t, 54321, overview.Quota.Balance)
+	assert.Equal(t, 67890, user.Quota, "the database intentionally lags while the batch update is pending")
 }

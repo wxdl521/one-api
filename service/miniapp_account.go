@@ -51,6 +51,10 @@ func GetMiniAppAccountOverview(userID int) (*MiniAppAccountOverview, error) {
 	if err != nil {
 		return nil, err
 	}
+	quota, err := model.GetUserQuota(userID, false)
+	if err != nil {
+		return nil, err
+	}
 
 	groupsByName := GetUserUsableGroups(user.Group)
 	groups := make([]string, 0, len(groupsByName))
@@ -94,7 +98,7 @@ func GetMiniAppAccountOverview(userID int) (*MiniAppAccountOverview, error) {
 		DisplayName: user.DisplayName,
 		Email:       maskMiniAppEmail(user.Email),
 		Quota: MiniAppAccountQuota{
-			Balance: user.Quota,
+			Balance: quota,
 			Unit:    miniAppQuotaUnit,
 		},
 		EnabledGroups: groups,
