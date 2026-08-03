@@ -180,6 +180,24 @@ func GetAuthFlow(token string, match AuthFlowMatch) (*AuthFlow, error) {
 	return &flow, nil
 }
 
+// GetAuthFlowState loads a flow after proving the opaque token and required
+// match fields. Unlike GetAuthFlow, it intentionally returns consumed or
+// expired rows so a caller can expose a narrow terminal state without using a
+// separate, unauthenticated locator.
+func GetAuthFlowState(token string, match AuthFlowMatch) (*AuthFlow, error) {
+	if token == "" || match.Purpose == "" {
+		return nil, ErrAuthFlowInvalid
+	}
+	var flow AuthFlow
+	if err := applyAuthFlowMatch(DB, token, match).First(&flow).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAuthFlowInvalid
+		}
+		return nil, err
+	}
+	return &flow, nil
+}
+
 // ConsumeAuthFlow atomically validates and consumes a flow. Optional match
 // fields are enforced when non-zero so tokens cannot cross purposes or users.
 func ConsumeAuthFlow(token string, match AuthFlowMatch) (*AuthFlow, error) {
@@ -189,44 +207,57 @@ func ConsumeAuthFlow(token string, match AuthFlowMatch) (*AuthFlow, error) {
 // ConsumeAuthFlowWithAction consumes a flow and runs action in the same
 // database transaction. An action failure rolls the consumption back.
 func ConsumeAuthFlowWithAction(token string, match AuthFlowMatch, action func(tx *gorm.DB, flow *AuthFlow) error) (*AuthFlow, error) {
-	if token == "" || match.Purpose == "" {
-		return nil, ErrAuthFlowInvalid
-	}
 	var consumed AuthFlow
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		query := applyAuthFlowMatch(lockForUpdate(tx), token, match)
-		if err := query.First(&consumed).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrAuthFlowInvalid
-			}
+		flow, err := ConsumeAuthFlowWithTx(tx, token, match, action)
+		if err != nil {
 			return err
 		}
-		if consumed.ConsumedAt != nil {
-			return ErrAuthFlowConsumed
-		}
-		now := time.Now()
-		if !consumed.ExpiresAt.After(now) {
-			return ErrAuthFlowExpired
-		}
-		result := tx.Model(&AuthFlow{}).
-			Where("id = ? AND consumed_at IS NULL AND expires_at > ?", consumed.Id, now).
-			Update("consumed_at", now)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return ErrAuthFlowConsumed
-		}
-		consumed.ConsumedAt = &now
-		if action != nil {
-			if err := action(tx, &consumed); err != nil {
-				return err
-			}
-		}
+		consumed = *flow
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	return &consumed, nil
+}
+
+// ConsumeAuthFlowWithTx atomically validates and consumes a flow in the
+// caller's transaction. It is for ceremonies that must consume more than one
+// one-time flow together with a durable ownership change.
+func ConsumeAuthFlowWithTx(tx *gorm.DB, token string, match AuthFlowMatch, action func(tx *gorm.DB, flow *AuthFlow) error) (*AuthFlow, error) {
+	if tx == nil || token == "" || match.Purpose == "" {
+		return nil, ErrAuthFlowInvalid
+	}
+	var consumed AuthFlow
+	query := applyAuthFlowMatch(lockForUpdate(tx), token, match)
+	if err := query.First(&consumed).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAuthFlowInvalid
+		}
+		return nil, err
+	}
+	if consumed.ConsumedAt != nil {
+		return nil, ErrAuthFlowConsumed
+	}
+	now := time.Now()
+	if !consumed.ExpiresAt.After(now) {
+		return nil, ErrAuthFlowExpired
+	}
+	result := tx.Model(&AuthFlow{}).
+		Where("id = ? AND consumed_at IS NULL AND expires_at > ?", consumed.Id, now).
+		Update("consumed_at", now)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, ErrAuthFlowConsumed
+	}
+	consumed.ConsumedAt = &now
+	if action != nil {
+		if err := action(tx, &consumed); err != nil {
+			return nil, err
+		}
 	}
 	return &consumed, nil
 }
