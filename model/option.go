@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,8 @@ func InitOptionMap() {
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
 	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
+	common.OptionMap["MiniProgramEnabled"] = strconv.FormatBool(common.MiniProgramEnabled)
+	common.OptionMap["MiniProgramTextTestEnabled"] = strconv.FormatBool(common.MiniProgramTextTestEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
@@ -206,6 +209,10 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == "MiniProgramTextTestEnabled" && value == "true" && !common.MiniProgramEnabled {
+		return errors.New("MiniProgramTextTestEnabled requires MiniProgramEnabled")
+	}
+
 	// Save to database first
 	option := Option{
 		Key: key,
@@ -333,6 +340,10 @@ func updateOptionMap(key string, value string) (err error) {
 			common.TaskEnabled = boolValue
 		case "DataExportEnabled":
 			common.DataExportEnabled = boolValue
+		case "MiniProgramEnabled":
+			common.MiniProgramEnabled = boolValue
+		case "MiniProgramTextTestEnabled":
+			common.MiniProgramTextTestEnabled = boolValue
 		case "DefaultCollapseSidebar":
 			common.DefaultCollapseSidebar = boolValue
 		case "MjNotifyEnabled":

@@ -116,6 +116,13 @@ func InitEnv() {
 	// Initialize string variables with GetEnvOrDefaultString
 	GeminiSafetySetting = GetEnvOrDefaultString("GEMINI_SAFETY_SETTING", "BLOCK_NONE")
 	CohereSafetySetting = GetEnvOrDefaultString("COHERE_SAFETY_SETTING", "NONE")
+	WeChatMiniAppAppID = GetEnvOrDefaultString("WECHAT_MINIAPP_APP_ID", "")
+	WeChatMiniAppAppSecret = GetEnvOrDefaultString("WECHAT_MINIAPP_APP_SECRET", "")
+	MiniAppBindWebBaseURL = GetEnvOrDefaultString("MINIAPP_BIND_WEB_BASE_URL", "")
+	MiniAppHTTPTimeout = time.Duration(GetEnvOrDefault("MINIAPP_HTTP_TIMEOUT_SECONDS", int(DefaultMiniAppHTTPTimeout/time.Second))) * time.Second
+	if MiniAppHTTPTimeout <= 0 {
+		MiniAppHTTPTimeout = DefaultMiniAppHTTPTimeout
+	}
 
 	// Initialize rate limit variables
 	GlobalApiRateLimitEnable = GetEnvOrDefaultBool("GLOBAL_API_RATE_LIMIT_ENABLE", true)

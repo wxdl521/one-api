@@ -29,6 +29,15 @@ var DataExportEnabled = true
 var DataExportInterval = 5         // unit: minute
 var DataExportDefaultTime = "hour" // unit: minute
 var DefaultCollapseSidebar = false // default value of collapse sidebar
+var MiniProgramEnabled = false
+var MiniProgramTextTestEnabled = false
+
+const DefaultMiniAppHTTPTimeout = 10 * time.Second
+
+var WeChatMiniAppAppID = ""
+var WeChatMiniAppAppSecret = ""
+var MiniAppBindWebBaseURL = ""
+var MiniAppHTTPTimeout = DefaultMiniAppHTTPTimeout
 
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 
