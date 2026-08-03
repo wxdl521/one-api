@@ -33,6 +33,7 @@ import {
 import { api } from '@/lib/api'
 
 import {
+  consumeMiniAppBindingBootstrapTicket,
   consumeMiniAppBindingURL,
   createMiniAppBindingConfirmationPayload,
 } from './lib/binding-ticket'
@@ -47,11 +48,23 @@ function captureBindingTicketFromLocation() {
   return captured.bindingTicket
 }
 
+function consumeBootstrapBindingTicket() {
+  if (typeof window === 'undefined') return null
+  return consumeMiniAppBindingBootstrapTicket(
+    window as unknown as Record<string, unknown>
+  )
+}
+
 // This runs during module evaluation, before React renders this route or any
-// route-level instrumentation can observe the handoff URL. The ticket stays
-// in memory only for the confirmation request.
-if (typeof window !== 'undefined') {
-  initialBindingTicket = captureBindingTicketFromLocation()
+// route-level instrumentation can observe the handoff URL. The synchronous
+// head bootstrap has already removed the fragment and left the ticket in
+// memory only for the confirmation request.
+if (
+  typeof window !== 'undefined' &&
+  window.location.pathname === '/miniapp-bind'
+) {
+  initialBindingTicket =
+    consumeBootstrapBindingTicket() ?? captureBindingTicketFromLocation()
 }
 
 function takeBindingTicketFromLocation() {
@@ -60,7 +73,7 @@ function takeBindingTicketFromLocation() {
     initialBindingTicket = undefined
     return bindingTicket
   }
-  return captureBindingTicketFromLocation()
+  return consumeBootstrapBindingTicket() ?? captureBindingTicketFromLocation()
 }
 
 export function MiniAppBindPage() {

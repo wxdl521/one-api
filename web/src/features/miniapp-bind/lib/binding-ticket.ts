@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 const maxBindingTicketLength = 512
 const miniAppBindPath = '/miniapp-bind'
+export const miniAppBindingTicketBootstrapWindowKey =
+  '__theOneMiniAppBindingTicket'
 
 export interface MiniAppBindingURLCapture {
   bindingTicket: string | null
@@ -35,6 +37,16 @@ export function createMiniAppBindingConfirmationPayload(
     return null
   }
   return { binding_ticket: normalizedTicket }
+}
+
+export function consumeMiniAppBindingBootstrapTicket(
+  handoff: Record<string, unknown>
+): string | null {
+  const bindingTicket = handoff[miniAppBindingTicketBootstrapWindowKey]
+  delete handoff[miniAppBindingTicketBootstrapWindowKey]
+  if (typeof bindingTicket !== 'string') return null
+
+  return createMiniAppBindingConfirmationPayload(bindingTicket)?.binding_ticket ?? null
 }
 
 export function consumeMiniAppBindingURL(

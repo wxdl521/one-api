@@ -20,8 +20,10 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
-	consumeMiniAppBindingURL,
+  consumeMiniAppBindingBootstrapTicket,
+  consumeMiniAppBindingURL,
   createMiniAppBindingConfirmationPayload,
+  miniAppBindingTicketBootstrapWindowKey,
 } from './binding-ticket'
 
 describe('mini program browser binding ticket handling', () => {
@@ -55,5 +57,21 @@ describe('mini program browser binding ticket handling', () => {
       consumeMiniAppBindingURL('/miniapp-bind#ticket=pending-ticket'),
       { bindingTicket: null, visibleURL: '/miniapp-bind' }
     )
+  })
+
+  test('consumes the in-memory bootstrap ticket once without persistence', () => {
+    const handoff = {
+      [miniAppBindingTicketBootstrapWindowKey]: 'bind-flow-ticket',
+    }
+
+    assert.equal(
+      consumeMiniAppBindingBootstrapTicket(handoff),
+      'bind-flow-ticket'
+    )
+    assert.equal(
+      Object.hasOwn(handoff, miniAppBindingTicketBootstrapWindowKey),
+      false
+    )
+    assert.equal(consumeMiniAppBindingBootstrapTicket(handoff), null)
   })
 })
