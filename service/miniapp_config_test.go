@@ -182,6 +182,7 @@ func TestNewMiniAppConfigRejectsMissingCredentialsWithoutExposingSecrets(t *test
 			config, err := newMiniAppConfig(
 				credentials.appID,
 				credentials.appSecret,
+				"subject-hmac-key",
 				"https://console.example.com/miniapp/bind/",
 				10*time.Second,
 				false,
@@ -204,7 +205,7 @@ func TestNewMiniAppConfigRejectsInvalidBindWebBaseURL(t *testing.T) {
 		"fragment":                       "https://console.example.com/miniapp/bind#fragment",
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := newMiniAppConfig("wx123", "super-secret", bindWebBaseURL, 10*time.Second, false)
+			_, err := newMiniAppConfig("wx123", "super-secret", "subject-hmac-key", bindWebBaseURL, 10*time.Second, false)
 
 			require.ErrorIs(t, err, ErrMiniAppConfiguration)
 			assert.NotContains(t, err.Error(), "super-secret")
@@ -216,6 +217,7 @@ func TestNewMiniAppConfigNormalizesAndRedactsConfiguration(t *testing.T) {
 	config, err := newMiniAppConfig(
 		"wx123",
 		"super-secret",
+		"subject-hmac-key",
 		"https://CONSOLE.example.com/miniapp/bind///",
 		12*time.Second,
 		false,
@@ -229,16 +231,51 @@ func TestNewMiniAppConfigNormalizesAndRedactsConfiguration(t *testing.T) {
 	serialized, err := common.Marshal(config)
 	require.NoError(t, err)
 	assert.NotContains(t, string(serialized), "super-secret")
+	assert.NotContains(t, string(serialized), "subject-hmac-key")
 }
 
 func TestNewMiniAppConfigAllowsHTTPOnlyForLocalDevelopment(t *testing.T) {
 	config, err := newMiniAppConfig(
 		"wx123",
 		"super-secret",
+		"subject-hmac-key",
 		"http://localhost:3000/miniapp/bind/",
 		10*time.Second,
 		true,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost:3000/miniapp/bind", config.BindWebBaseURL)
+}
+
+func TestNewMiniAppConfigRequiresASeparateSubjectHMACKey(t *testing.T) {
+	config, err := newMiniAppConfig(
+		"wx123",
+		"super-secret",
+		"",
+		"https://console.example.com/miniapp/bind",
+		10*time.Second,
+		false,
+	)
+
+	require.ErrorIs(t, err, ErrMiniAppConfiguration)
+	assert.Empty(t, config)
+	assert.NotContains(t, err.Error(), "super-secret")
+}
+
+func TestWechatMiniSubjectDigestIsStableAcrossConfigReloads(t *testing.T) {
+	firstConfig, err := newMiniAppConfig(
+		"wx123", "app-secret", "persistent-subject-key-v1", "https://console.example.com/miniapp/bind", 10*time.Second, false,
+	)
+	require.NoError(t, err)
+	secondConfig, err := newMiniAppConfig(
+		"wx123", "another-app-secret", "persistent-subject-key-v1", "https://console.example.com/miniapp/bind", 10*time.Second, false,
+	)
+	require.NoError(t, err)
+
+	firstDigest := deriveWechatMiniSubjectHash(firstConfig, "openid-after-restart")
+	secondDigest := deriveWechatMiniSubjectHash(secondConfig, "openid-after-restart")
+
+	assert.Equal(t, firstDigest, secondDigest)
+	assert.Len(t, firstDigest, 64)
+	assert.NotContains(t, firstDigest, "openid-after-restart")
 }

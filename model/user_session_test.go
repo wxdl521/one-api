@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,6 +271,93 @@ func TestRotateUserSessionRefreshRaceAndReuse(t *testing.T) {
 	require.NoError(t, getErr)
 	assert.Equal(t, UserSessionStatusRevoked, stored.Status)
 	assert.Equal(t, "refresh_reuse", stored.RevokedReason)
+}
+
+func TestRenewMiniAppUserSessionHasOneWinnerAndRollsBackOnCreateFailure(t *testing.T) {
+	t.Run("one winner", func(t *testing.T) {
+		setupUserSessionTest(t)
+		const userID = 1013
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		successors := []*UserSession{
+			newTestUserSession("miniapp-renew-successor-a", userID, now),
+			newTestUserSession("miniapp-renew-successor-b", userID, now),
+		}
+		for _, successor := range successors {
+			successor.LoginMethod = "wechat-miniapp"
+		}
+		start := make(chan struct{})
+		errorsByAttempt := make(chan error, len(successors))
+		var waitGroup sync.WaitGroup
+		for _, successor := range successors {
+			waitGroup.Add(1)
+			go func(successor *UserSession) {
+				defer waitGroup.Done()
+				<-start
+				_, err := RenewMiniAppUserSession(userID, prior.SID, successor)
+				errorsByAttempt <- err
+			}(successor)
+		}
+		close(start)
+		waitGroup.Wait()
+		close(errorsByAttempt)
+
+		successes := 0
+		for err := range errorsByAttempt {
+			if err == nil {
+				successes++
+				continue
+			}
+			assert.ErrorIs(t, err, ErrUserSessionInactive)
+		}
+		assert.Equal(t, 1, successes)
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusRevoked, storedPrior.Status)
+		var activeSuccessors int64
+		require.NoError(t, DB.Model(&UserSession{}).Where("user_id = ? AND status = ?", userID, UserSessionStatusActive).Count(&activeSuccessors).Error)
+		assert.Equal(t, int64(1), activeSuccessors)
+	})
+
+	t.Run("create failure rolls back", func(t *testing.T) {
+		setupUserSessionTest(t)
+		const userID = 1014
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-rollback-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		forcedErr := errors.New("forced miniapp successor create failure")
+		callbackName := "test:fail_miniapp_successor_create"
+		callbackRegistered := true
+		require.NoError(t, DB.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+			if tx.Statement != nil && tx.Statement.Table == "user_sessions" {
+				tx.AddError(forcedErr)
+			}
+		}))
+		t.Cleanup(func() {
+			if callbackRegistered {
+				_ = DB.Callback().Create().Remove(callbackName)
+			}
+		})
+		successor := newTestUserSession("miniapp-renew-rollback-successor", userID, now)
+		successor.LoginMethod = "wechat-miniapp"
+
+		_, err := RenewMiniAppUserSession(userID, prior.SID, successor)
+
+		require.ErrorIs(t, err, forcedErr)
+		require.NoError(t, DB.Callback().Create().Remove(callbackName))
+		callbackRegistered = false
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusActive, storedPrior.Status)
+		var successorCount int64
+		require.NoError(t, DB.Model(&UserSession{}).Where("sid = ?", successor.SID).Count(&successorCount).Error)
+		assert.Zero(t, successorCount)
+	})
 }
 
 func TestUserSessionPreviousRefreshHashNormalizesLegacyPadding(t *testing.T) {

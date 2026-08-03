@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,6 +23,7 @@ func useMiniAppExchangeTestConfig(t *testing.T) {
 	t.Helper()
 	previousAppID := common.WeChatMiniAppAppID
 	previousAppSecret := common.WeChatMiniAppAppSecret
+	previousSubjectHMACKey := common.WeChatMiniAppSubjectHMACKey
 	previousBindURL := common.MiniAppBindWebBaseURL
 	previousTimeout := common.MiniAppHTTPTimeout
 	previousEnabled, previousTextEnabled := common.GetMiniProgramFeatureFlags()
@@ -30,6 +32,7 @@ func useMiniAppExchangeTestConfig(t *testing.T) {
 
 	common.WeChatMiniAppAppID = "wx-test-app"
 	common.WeChatMiniAppAppSecret = "miniapp-test-secret"
+	common.WeChatMiniAppSubjectHMACKey = "miniapp-test-subject-hmac-key-v1"
 	common.MiniAppBindWebBaseURL = "https://console.example.com/miniapp/bind"
 	common.MiniAppHTTPTimeout = time.Second
 	common.OptionMapRWMutex.Lock()
@@ -43,6 +46,7 @@ func useMiniAppExchangeTestConfig(t *testing.T) {
 	t.Cleanup(func() {
 		common.WeChatMiniAppAppID = previousAppID
 		common.WeChatMiniAppAppSecret = previousAppSecret
+		common.WeChatMiniAppSubjectHMACKey = previousSubjectHMACKey
 		common.MiniAppBindWebBaseURL = previousBindURL
 		common.MiniAppHTTPTimeout = previousTimeout
 		common.OptionMapRWMutex.Lock()
@@ -55,6 +59,26 @@ func useMiniAppExchangeTestConfig(t *testing.T) {
 		cachedMiniAppConfig = MiniAppConfig{}
 		cachedMiniAppConfigErr = nil
 	})
+}
+
+type blockingWechatMiniAppRoundTripper struct {
+	started chan struct{}
+}
+
+func (transport *blockingWechatMiniAppRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	close(transport.started)
+	<-request.Context().Done()
+	return nil, request.Context().Err()
+}
+
+func TestExchangeWechatMiniCodeRejectsMissingSubjectHMACKey(t *testing.T) {
+	useMiniAppExchangeTestConfig(t)
+	common.WeChatMiniAppSubjectHMACKey = ""
+	miniAppConfigOnce = sync.Once{}
+
+	_, err := ExchangeWechatMiniCode(context.Background(), "one-use-code")
+
+	require.ErrorIs(t, err, ErrMiniAppConfiguration)
 }
 
 func TestExchangeWechatMiniCodeRejectsProviderAndTransportFailuresWithoutSecrets(t *testing.T) {
@@ -72,7 +96,7 @@ func TestExchangeWechatMiniCodeRejectsProviderAndTransportFailuresWithoutSecrets
 		t.Cleanup(server.Close)
 		wechatMiniAppCodeExchangeEndpoint = server.URL
 
-		_, err := ExchangeWechatMiniCode("bad-code")
+		_, err := ExchangeWechatMiniCode(context.Background(), "bad-code")
 
 		require.ErrorIs(t, err, ErrWechatMiniProviderRejected)
 		assert.NotContains(t, err.Error(), "session-key-must-not-escape")
@@ -86,7 +110,7 @@ func TestExchangeWechatMiniCodeRejectsProviderAndTransportFailuresWithoutSecrets
 		t.Cleanup(server.Close)
 		wechatMiniAppCodeExchangeEndpoint = server.URL
 
-		_, err := ExchangeWechatMiniCode("bad-json")
+		_, err := ExchangeWechatMiniCode(context.Background(), "bad-json")
 
 		require.ErrorIs(t, err, ErrWechatMiniProviderUnavailable)
 		assert.NotContains(t, err.Error(), "session-key-must-not-escape")
@@ -96,17 +120,63 @@ func TestExchangeWechatMiniCodeRejectsProviderAndTransportFailuresWithoutSecrets
 		useMiniAppExchangeTestConfig(t)
 		common.MiniAppHTTPTimeout = 10 * time.Millisecond
 		miniAppConfigOnce = sync.Once{}
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			time.Sleep(50 * time.Millisecond)
-			w.WriteHeader(http.StatusOK)
-		}))
-		t.Cleanup(server.Close)
-		wechatMiniAppCodeExchangeEndpoint = server.URL
+		transport := &blockingWechatMiniAppRoundTripper{started: make(chan struct{})}
+		wechatMiniAppHTTPClientFactory = func(timeout time.Duration) *http.Client {
+			return &http.Client{Timeout: timeout, Transport: transport}
+		}
 
-		_, err := ExchangeWechatMiniCode("slow-code")
+		_, err := ExchangeWechatMiniCode(context.Background(), "slow-code")
 
 		require.ErrorIs(t, err, ErrWechatMiniProviderUnavailable)
+		select {
+		case <-transport.started:
+		default:
+			require.Fail(t, "exchange request never reached the transport")
+		}
 	})
+}
+
+func TestExchangeWechatMiniCodePropagatesCallerCancellation(t *testing.T) {
+	useMiniAppExchangeTestConfig(t)
+	transport := &blockingWechatMiniAppRoundTripper{started: make(chan struct{})}
+	wechatMiniAppHTTPClientFactory = func(timeout time.Duration) *http.Client {
+		return &http.Client{Timeout: timeout, Transport: transport}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	result := make(chan error, 1)
+	go func() {
+		_, err := ExchangeWechatMiniCode(ctx, "cancelled-code")
+		result <- err
+	}()
+
+	<-transport.started
+	cancel()
+	err := <-result
+
+	require.ErrorIs(t, err, ErrWechatMiniProviderUnavailable)
+}
+
+func TestExchangeWechatMiniCodeRejectsRedirectsBeforeSecretQueryCanLeaveProvider(t *testing.T) {
+	useMiniAppExchangeTestConfig(t)
+	redirectTargetHits := 0
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		redirectTargetHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(redirectTarget.Close)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "miniapp-test-secret", request.URL.Query().Get("secret"))
+		assert.Equal(t, "redirect-code", request.URL.Query().Get("js_code"))
+		http.Redirect(w, request, redirectTarget.URL, http.StatusFound)
+	}))
+	t.Cleanup(provider.Close)
+	wechatMiniAppCodeExchangeEndpoint = provider.URL
+
+	_, err := ExchangeWechatMiniCode(context.Background(), "redirect-code")
+
+	require.ErrorIs(t, err, ErrWechatMiniProviderUnavailable)
+	assert.Zero(t, redirectTargetHits)
 }
 
 func TestMiniAppAuthErrorCodeMapsProviderFailuresToSafeBFFResponses(t *testing.T) {
@@ -148,7 +218,7 @@ func TestExchangeWechatMiniCodeReturnsOnlyDurableSubjectDigest(t *testing.T) {
 	t.Cleanup(server.Close)
 	wechatMiniAppCodeExchangeEndpoint = server.URL
 
-	subject, err := ExchangeWechatMiniCode("one-use-code")
+	subject, err := ExchangeWechatMiniCode(context.Background(), "one-use-code")
 
 	require.NoError(t, err)
 	assert.Equal(t, "wx-test-app", subject.AppID)
@@ -173,7 +243,7 @@ func TestStartMiniAppLoginCreatesFiveMinutePendingTicketForUnboundSubject(t *tes
 	t.Cleanup(server.Close)
 	wechatMiniAppCodeExchangeEndpoint = server.URL
 
-	result, err := StartMiniAppLogin("one-use-code", "127.0.0.1", "miniapp-test")
+	result, err := StartMiniAppLogin(context.Background(), "one-use-code", "127.0.0.1", "miniapp-test")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -187,7 +257,7 @@ func TestStartMiniAppLoginCreatesFiveMinutePendingTicketForUnboundSubject(t *tes
 	assert.WithinDuration(t, time.Now().Add(5*time.Minute), flow.ExpiresAt, time.Second)
 	assert.NotContains(t, flow.Payload, "unbound-openid")
 	assert.NotContains(t, flow.Payload, "never-store-this")
-	secondResult, err := StartMiniAppLogin("second-one-use-code", "127.0.0.1", "miniapp-test")
+	secondResult, err := StartMiniAppLogin(context.Background(), "second-one-use-code", "127.0.0.1", "miniapp-test")
 	require.NoError(t, err)
 	assert.NotEqual(t, result.PendingTicket, secondResult.PendingTicket)
 	var identityCount int64
@@ -206,14 +276,14 @@ func TestStartMiniAppLoginIssuesMiniSessionForBoundSubject(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	wechatMiniAppCodeExchangeEndpoint = server.URL
-	subject, err := ExchangeWechatMiniCode("first-code")
+	subject, err := ExchangeWechatMiniCode(context.Background(), "first-code")
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
 		_, err := model.ClaimWechatMiniIdentityWithTx(tx, subject.AppID, subject.OpenIDHash, user.Id)
 		return err
 	}))
 
-	result, err := StartMiniAppLogin("fresh-code", "127.0.0.1", "miniapp-test")
+	result, err := StartMiniAppLogin(context.Background(), "fresh-code", "127.0.0.1", "miniapp-test")
 
 	require.NoError(t, err)
 	assert.Equal(t, MiniAppLoginStateAuthenticated, result.State)
@@ -237,7 +307,7 @@ func TestMiniAppBindingRequiresBrowserSessionAndConsumesFlowsOnce(t *testing.T) 
 	}))
 	t.Cleanup(server.Close)
 	wechatMiniAppCodeExchangeEndpoint = server.URL
-	pending, err := StartMiniAppLogin("one-use-code", "127.0.0.1", "miniapp-test")
+	pending, err := StartMiniAppLogin(context.Background(), "one-use-code", "127.0.0.1", "miniapp-test")
 	require.NoError(t, err)
 	login, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "browser-test")
 	require.NoError(t, err)
@@ -352,7 +422,7 @@ func TestRegisterMiniAppUserUsesPendingTicketAndNormalPasswordRules(t *testing.T
 	}))
 	t.Cleanup(server.Close)
 	wechatMiniAppCodeExchangeEndpoint = server.URL
-	pending, err := StartMiniAppLogin("one-use-code", "127.0.0.1", "miniapp-test")
+	pending, err := StartMiniAppLogin(context.Background(), "one-use-code", "127.0.0.1", "miniapp-test")
 	require.NoError(t, err)
 
 	bundle, err := RegisterMiniAppUser(pending.PendingTicket, MiniAppRegistration{
@@ -451,7 +521,7 @@ func TestRenewMiniAppLoginRechecksCodeAndOnlyRevokesOwnedMiniSession(t *testing.
 	}))
 	t.Cleanup(server.Close)
 	wechatMiniAppCodeExchangeEndpoint = server.URL
-	subject, err := ExchangeWechatMiniCode("first-code")
+	subject, err := ExchangeWechatMiniCode(context.Background(), "first-code")
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
 		_, err := model.ClaimWechatMiniIdentityWithTx(tx, subject.AppID, subject.OpenIDHash, user.Id)
@@ -462,7 +532,7 @@ func TestRenewMiniAppLoginRechecksCodeAndOnlyRevokesOwnedMiniSession(t *testing.
 	otherPrior, err := CreateMiniAppLoginSession(otherUser.Id, "127.0.0.1", "miniapp-test")
 	require.NoError(t, err)
 
-	renewed, err := RenewMiniAppLogin("fresh-code", prior.Session.SID, "127.0.0.2", "miniapp-test")
+	renewed, err := RenewMiniAppLogin(context.Background(), "fresh-code", prior.Session.SID, "127.0.0.2", "miniapp-test")
 
 	require.NoError(t, err)
 	assert.Empty(t, renewed.RefreshToken)
@@ -470,14 +540,14 @@ func TestRenewMiniAppLoginRechecksCodeAndOnlyRevokesOwnedMiniSession(t *testing.
 	var revoked model.UserSession
 	require.NoError(t, model.DB.First(&revoked, "sid = ?", prior.Session.SID).Error)
 	assert.Equal(t, model.UserSessionStatusRevoked, revoked.Status)
-	_, err = RenewMiniAppLogin("another-code", otherPrior.Session.SID, "127.0.0.2", "miniapp-test")
+	_, err = RenewMiniAppLogin(context.Background(), "another-code", otherPrior.Session.SID, "127.0.0.2", "miniapp-test")
 	assert.ErrorIs(t, err, ErrMiniAppSessionOwnership)
 	var stillActive model.UserSession
 	require.NoError(t, model.DB.First(&stillActive, "sid = ?", otherPrior.Session.SID).Error)
 	assert.Equal(t, model.UserSessionStatusActive, stillActive.Status)
 	browserSession, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "browser-test")
 	require.NoError(t, err)
-	_, err = RenewMiniAppLogin("browser-sid-code", browserSession.Session.SID, "127.0.0.2", "miniapp-test")
+	_, err = RenewMiniAppLogin(context.Background(), "browser-sid-code", browserSession.Session.SID, "127.0.0.2", "miniapp-test")
 	assert.ErrorIs(t, err, ErrMiniAppSessionOwnership)
 	var browserStillActive model.UserSession
 	require.NoError(t, model.DB.First(&browserStillActive, "sid = ?", browserSession.Session.SID).Error)

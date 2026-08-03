@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/the-one/common"
 	"github.com/QuantumNous/the-one/model"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -16,6 +18,7 @@ const (
 	wechatMiniAppCodeExchangeDefaultEndpoint = "https://api.weixin.qq.com/sns/jscode2session"
 	miniAppAuthFlowProvider                  = "wechat-miniapp"
 	miniAppPendingTicketTTL                  = 5 * time.Minute
+	wechatMiniSubjectHashDomain              = "wechat-miniapp-openid-v1"
 	MiniAppLoginStatePending                 = "pending"
 	MiniAppLoginStateAuthenticated           = "authenticated"
 )
@@ -33,7 +36,12 @@ var (
 
 	wechatMiniAppCodeExchangeEndpoint = wechatMiniAppCodeExchangeDefaultEndpoint
 	wechatMiniAppHTTPClientFactory    = func(timeout time.Duration) *http.Client {
-		return &http.Client{Timeout: timeout}
+		return &http.Client{
+			Timeout: timeout,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 )
 
@@ -94,7 +102,7 @@ type wechatMiniCodeExchangeResponse struct {
 // ExchangeWechatMiniCode exchanges the one-use wx.login code directly with
 // WeChat. Provider secrets and raw identity material are intentionally never
 // returned, logged, or persisted.
-func ExchangeWechatMiniCode(code string) (*WechatMiniSubject, error) {
+func ExchangeWechatMiniCode(ctx context.Context, code string) (*WechatMiniSubject, error) {
 	config, err := RequireMiniProgramConfig()
 	if err != nil {
 		return nil, err
@@ -110,11 +118,14 @@ func ExchangeWechatMiniCode(code string) (*WechatMiniSubject, error) {
 	}
 	query := endpoint.Query()
 	query.Set("appid", config.AppID)
-	query.Set("secret", common.WeChatMiniAppAppSecret)
+	query.Set("secret", config.appSecret)
 	query.Set("js_code", code)
 	query.Set("grant_type", "authorization_code")
 	endpoint.RawQuery = query.Encode()
-	request, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, ErrWechatMiniProviderUnavailable
 	}
@@ -143,16 +154,20 @@ func ExchangeWechatMiniCode(code string) (*WechatMiniSubject, error) {
 	}
 	return &WechatMiniSubject{
 		AppID:      config.AppID,
-		OpenIDHash: common.GenerateHMACWithKey([]byte("wechat-miniapp-openid-v1:"+common.SessionSecret), config.AppID+":"+openID),
+		OpenIDHash: deriveWechatMiniSubjectHash(config, openID),
 	}, nil
+}
+
+func deriveWechatMiniSubjectHash(config MiniAppConfig, openID string) string {
+	return common.GenerateHMACWithKey([]byte(config.subjectHMACKey), wechatMiniSubjectHashDomain+":"+config.AppID+":"+openID)
 }
 
 // StartMiniAppLogin exchanges a fresh Mini Program code and either issues a
 // session for the already-owned subject or creates an opaque five-minute
 // pending identity ticket. It never creates a durable identity for an
 // unbound subject.
-func StartMiniAppLogin(code, ip, userAgent string) (*MiniAppLoginResult, error) {
-	subject, err := ExchangeWechatMiniCode(code)
+func StartMiniAppLogin(ctx context.Context, code, ip, userAgent string) (*MiniAppLoginResult, error) {
+	subject, err := ExchangeWechatMiniCode(ctx, code)
 	if err != nil {
 		return nil, err
 	}
@@ -414,8 +429,8 @@ func RegisterMiniAppUser(pendingTicket string, registration MiniAppRegistration,
 // RenewMiniAppLogin is the only Mini Program session-renewal path. It accepts
 // a fresh wx.login code and the prior Mini Program SID; it never accepts a
 // browser refresh cookie, personal access token, or client-supplied user ID.
-func RenewMiniAppLogin(code, priorSID, ip, userAgent string) (*AuthBundle, error) {
-	subject, err := ExchangeWechatMiniCode(code)
+func RenewMiniAppLogin(ctx context.Context, code, priorSID, ip, userAgent string) (*AuthBundle, error) {
+	subject, err := ExchangeWechatMiniCode(ctx, code)
 	if err != nil {
 		return nil, err
 	}
@@ -426,19 +441,41 @@ func RenewMiniAppLogin(code, priorSID, ip, userAgent string) (*AuthBundle, error
 		}
 		return nil, err
 	}
-	priorSession, err := model.GetUserSessionCached(strings.TrimSpace(priorSID))
-	if err != nil {
-		return nil, ErrMiniAppSessionOwnership
-	}
-	if priorSession.UserID != identity.UserID || priorSession.LoginMethod != "wechat-miniapp" ||
-		priorSession.Status != model.UserSessionStatusActive || priorSession.RevokedAt != 0 || priorSession.ExpiresAt <= time.Now().Unix() {
-		return nil, ErrMiniAppSessionOwnership
-	}
-	bundle, err := CreateMiniAppLoginSession(identity.UserID, ip, userAgent)
+	user, err := model.GetUserCache(identity.UserID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := model.RevokeUserSession(identity.UserID, priorSession.SID, "miniapp_renewed"); err != nil {
+	if user.Status != common.UserStatusEnabled || user.AuthVersion <= 0 {
+		return nil, ErrMiniAppSessionOwnership
+	}
+	refreshSecret, err := common.GenerateRandomCharsKey(64)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().Unix()
+	session := &model.UserSession{
+		SID:             uuid.NewString(),
+		UserID:          identity.UserID,
+		Version:         1,
+		UserAuthVersion: user.AuthVersion,
+		RefreshHash:     hashRefreshSecret(refreshSecret),
+		LoginMethod:     "wechat-miniapp",
+		IP:              truncateAuthMetadata(ip, 64),
+		UserAgent:       truncateAuthMetadata(userAgent, 512),
+		CreatedAt:       now,
+		LastActiveAt:    now,
+		ExpiresAt:       time.Unix(now, 0).Add(LoginSessionTTL).Unix(),
+	}
+	session, err = model.RenewMiniAppUserSession(identity.UserID, strings.TrimSpace(priorSID), session)
+	if err != nil {
+		if errors.Is(err, model.ErrUserSessionInactive) {
+			return nil, ErrMiniAppSessionOwnership
+		}
+		return nil, err
+	}
+	bundle, err := issueAuthBundle(session, "", true)
+	if err != nil {
+		_, _ = model.RevokeUserSession(identity.UserID, session.SID, "token_issue_failed")
 		return nil, err
 	}
 	return bundle, nil

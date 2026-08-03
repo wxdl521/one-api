@@ -14,12 +14,16 @@ var ErrMiniProgramDisabled = errors.New("mini program is disabled")
 var ErrMiniProgramTextTestDisabled = errors.New("mini program text testing is disabled")
 var ErrMiniAppConfiguration = errors.New("mini program configuration is incomplete")
 
-// MiniAppConfig contains the non-secret configuration that mini program
-// services may use. The AppSecret stays in protected server configuration.
+// MiniAppConfig contains Mini Program configuration. The server-only secrets
+// are deliberately unexported and excluded from serialization. The subject
+// HMAC key must remain stable across restarts; rotating its v1 value requires
+// an explicit identity migration.
 type MiniAppConfig struct {
 	AppID          string        `json:"-"`
 	BindWebBaseURL string        `json:"-"`
 	HTTPTimeout    time.Duration `json:"-"`
+	appSecret      string
+	subjectHMACKey string
 }
 
 var miniAppConfigOnce sync.Once
@@ -33,6 +37,7 @@ func GetMiniAppConfig() (MiniAppConfig, error) {
 		cachedMiniAppConfig, cachedMiniAppConfigErr = newMiniAppConfig(
 			common.WeChatMiniAppAppID,
 			common.WeChatMiniAppAppSecret,
+			common.WeChatMiniAppSubjectHMACKey,
 			common.MiniAppBindWebBaseURL,
 			common.MiniAppHTTPTimeout,
 			common.DebugEnabled,
@@ -63,8 +68,11 @@ func RequireMiniProgramTextTestConfig() (MiniAppConfig, error) {
 	return GetMiniAppConfig()
 }
 
-func newMiniAppConfig(appID string, appSecret string, bindWebBaseURL string, httpTimeout time.Duration, localDevelopment bool) (MiniAppConfig, error) {
-	if strings.TrimSpace(appID) == "" || strings.TrimSpace(appSecret) == "" || httpTimeout <= 0 {
+func newMiniAppConfig(appID string, appSecret string, subjectHMACKey string, bindWebBaseURL string, httpTimeout time.Duration, localDevelopment bool) (MiniAppConfig, error) {
+	appID = strings.TrimSpace(appID)
+	appSecret = strings.TrimSpace(appSecret)
+	subjectHMACKey = strings.TrimSpace(subjectHMACKey)
+	if appID == "" || appSecret == "" || subjectHMACKey == "" || httpTimeout <= 0 {
 		return MiniAppConfig{}, ErrMiniAppConfiguration
 	}
 
@@ -82,8 +90,10 @@ func newMiniAppConfig(appID string, appSecret string, bindWebBaseURL string, htt
 	bindURL.Path = strings.TrimRight(bindURL.Path, "/")
 	bindURL.RawPath = ""
 	return MiniAppConfig{
-		AppID:          strings.TrimSpace(appID),
+		AppID:          appID,
 		BindWebBaseURL: bindURL.String(),
 		HTTPTimeout:    httpTimeout,
+		appSecret:      appSecret,
+		subjectHMACKey: subjectHMACKey,
 	}, nil
 }

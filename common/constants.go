@@ -43,6 +43,12 @@ const DefaultMiniAppHTTPTimeout = 10 * time.Second
 
 var WeChatMiniAppAppID = ""
 var WeChatMiniAppAppSecret = ""
+
+// WeChatMiniAppSubjectHMACKey is a persistent, deployment-stable secret used
+// only to derive versioned Mini Program subject digests. It must not be
+// generated from the process/session secret because identity mappings must
+// survive restarts.
+var WeChatMiniAppSubjectHMACKey = ""
 var MiniAppBindWebBaseURL = ""
 var MiniAppHTTPTimeout = DefaultMiniAppHTTPTimeout
 
