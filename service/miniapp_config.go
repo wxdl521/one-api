@@ -43,7 +43,8 @@ func GetMiniAppConfig() (MiniAppConfig, error) {
 
 // RequireMiniProgramConfig is the feature gate for Mini Program BFF requests.
 func RequireMiniProgramConfig() (MiniAppConfig, error) {
-	if !common.MiniProgramEnabled {
+	miniProgramEnabled, _ := common.GetMiniProgramFeatureFlags()
+	if !miniProgramEnabled {
 		return MiniAppConfig{}, ErrMiniProgramDisabled
 	}
 	return GetMiniAppConfig()
@@ -52,10 +53,11 @@ func RequireMiniProgramConfig() (MiniAppConfig, error) {
 // RequireMiniProgramTextTestConfig is the feature gate for mini program text
 // testing. Text testing cannot be enabled independently of the mini program.
 func RequireMiniProgramTextTestConfig() (MiniAppConfig, error) {
-	if !common.MiniProgramEnabled {
+	miniProgramEnabled, miniProgramTextTestEnabled := common.GetMiniProgramFeatureFlags()
+	if !miniProgramEnabled {
 		return MiniAppConfig{}, ErrMiniProgramDisabled
 	}
-	if !common.MiniProgramTextTestEnabled {
+	if !miniProgramTextTestEnabled {
 		return MiniAppConfig{}, ErrMiniProgramTextTestDisabled
 	}
 	return GetMiniAppConfig()

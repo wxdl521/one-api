@@ -32,6 +32,13 @@ var DefaultCollapseSidebar = false // default value of collapse sidebar
 var MiniProgramEnabled = false
 var MiniProgramTextTestEnabled = false
 
+// GetMiniProgramFeatureFlags returns the Mini Program feature flags from one synchronized snapshot.
+func GetMiniProgramFeatureFlags() (miniProgramEnabled bool, miniProgramTextTestEnabled bool) {
+	OptionMapRWMutex.RLock()
+	defer OptionMapRWMutex.RUnlock()
+	return MiniProgramEnabled, MiniProgramTextTestEnabled
+}
+
 const DefaultMiniAppHTTPTimeout = 10 * time.Second
 
 var WeChatMiniAppAppID = ""

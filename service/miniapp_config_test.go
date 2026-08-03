@@ -1,7 +1,9 @@
 package service
 
 import (
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,25 +16,32 @@ import (
 )
 
 func TestRequireMiniProgramConfigRejectsDisabledFeatures(t *testing.T) {
-	originalMiniProgramEnabled := common.MiniProgramEnabled
-	originalTextTestEnabled := common.MiniProgramTextTestEnabled
+	originalMiniProgramEnabled, originalTextTestEnabled := common.GetMiniProgramFeatureFlags()
 	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
 		common.MiniProgramEnabled = originalMiniProgramEnabled
 		common.MiniProgramTextTestEnabled = originalTextTestEnabled
+		common.OptionMapRWMutex.Unlock()
 	})
 
+	common.OptionMapRWMutex.Lock()
 	common.MiniProgramEnabled = false
 	common.MiniProgramTextTestEnabled = false
+	common.OptionMapRWMutex.Unlock()
 	_, err := RequireMiniProgramConfig()
 	require.ErrorIs(t, err, ErrMiniProgramDisabled)
 
+	common.OptionMapRWMutex.Lock()
 	common.MiniProgramEnabled = true
 	common.MiniProgramTextTestEnabled = false
+	common.OptionMapRWMutex.Unlock()
 	_, err = RequireMiniProgramTextTestConfig()
 	require.ErrorIs(t, err, ErrMiniProgramTextTestDisabled)
 
+	common.OptionMapRWMutex.Lock()
 	common.MiniProgramEnabled = false
 	common.MiniProgramTextTestEnabled = true
+	common.OptionMapRWMutex.Unlock()
 	_, err = RequireMiniProgramTextTestConfig()
 	require.ErrorIs(t, err, ErrMiniProgramDisabled)
 }
@@ -43,20 +52,21 @@ func TestMiniProgramTextTestOptionRequiresMiniProgramOption(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
 
 	originalDB := model.DB
-	originalMiniProgramEnabled := common.MiniProgramEnabled
-	originalTextTestEnabled := common.MiniProgramTextTestEnabled
+	originalMiniProgramEnabled, originalTextTestEnabled := common.GetMiniProgramFeatureFlags()
 	originalOptionMap := common.OptionMap
 	t.Cleanup(func() {
 		model.DB = originalDB
+		common.OptionMapRWMutex.Lock()
 		common.MiniProgramEnabled = originalMiniProgramEnabled
 		common.MiniProgramTextTestEnabled = originalTextTestEnabled
-		common.OptionMapRWMutex.Lock()
 		common.OptionMap = originalOptionMap
 		common.OptionMapRWMutex.Unlock()
 	})
 	model.DB = db
+	common.OptionMapRWMutex.Lock()
 	common.MiniProgramEnabled = false
 	common.MiniProgramTextTestEnabled = false
+	common.OptionMapRWMutex.Unlock()
 	model.InitOptionMap()
 	common.OptionMapRWMutex.RLock()
 	assert.Equal(t, "false", common.OptionMap["MiniProgramEnabled"])
@@ -65,11 +75,99 @@ func TestMiniProgramTextTestOptionRequiresMiniProgramOption(t *testing.T) {
 
 	err = model.UpdateOption("MiniProgramTextTestEnabled", "true")
 	require.Error(t, err)
-	assert.False(t, common.MiniProgramTextTestEnabled)
+	_, miniProgramTextTestEnabled := common.GetMiniProgramFeatureFlags()
+	assert.False(t, miniProgramTextTestEnabled)
 
 	require.NoError(t, model.UpdateOption("MiniProgramEnabled", "true"))
 	require.NoError(t, model.UpdateOption("MiniProgramTextTestEnabled", "true"))
-	assert.True(t, common.MiniProgramTextTestEnabled)
+	_, miniProgramTextTestEnabled = common.GetMiniProgramFeatureFlags()
+	assert.True(t, miniProgramTextTestEnabled)
+}
+
+func TestMiniProgramOptionUpdatePreservesStateWhenPersistenceFails(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	persistenceErr := errors.New("forced option persistence failure")
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("force_option_persistence_failure", func(tx *gorm.DB) {
+		tx.AddError(persistenceErr)
+	}))
+
+	originalDB := model.DB
+	originalMiniProgramEnabled, originalTextTestEnabled := common.GetMiniProgramFeatureFlags()
+	originalOptionMap := common.OptionMap
+	t.Cleanup(func() {
+		model.DB = originalDB
+		common.OptionMapRWMutex.Lock()
+		common.MiniProgramEnabled = originalMiniProgramEnabled
+		common.MiniProgramTextTestEnabled = originalTextTestEnabled
+		common.OptionMap = originalOptionMap
+		common.OptionMapRWMutex.Unlock()
+	})
+	model.DB = db
+	common.OptionMapRWMutex.Lock()
+	common.MiniProgramEnabled = false
+	common.MiniProgramTextTestEnabled = false
+	common.OptionMap = map[string]string{"MiniProgramEnabled": "false"}
+	common.OptionMapRWMutex.Unlock()
+
+	err = model.UpdateOption("MiniProgramEnabled", "true")
+	require.ErrorIs(t, err, persistenceErr)
+
+	common.OptionMapRWMutex.RLock()
+	assert.False(t, common.MiniProgramEnabled)
+	assert.Equal(t, "false", common.OptionMap["MiniProgramEnabled"])
+	common.OptionMapRWMutex.RUnlock()
+}
+
+func TestMiniProgramFeatureGateReadsFlagsSafelyDuringUpdates(t *testing.T) {
+	originalMiniProgramEnabled, originalTextTestEnabled := common.GetMiniProgramFeatureFlags()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.MiniProgramEnabled = originalMiniProgramEnabled
+		common.MiniProgramTextTestEnabled = originalTextTestEnabled
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	const readerCount = 4
+	const iterations = 100
+	start := make(chan struct{})
+	readerErrors := make(chan error, readerCount)
+	var waitGroup sync.WaitGroup
+
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		<-start
+		for i := 0; i < iterations; i++ {
+			common.OptionMapRWMutex.Lock()
+			common.MiniProgramEnabled = false
+			common.MiniProgramTextTestEnabled = i%2 == 0
+			common.OptionMapRWMutex.Unlock()
+		}
+	}()
+
+	for i := 0; i < readerCount; i++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			for j := 0; j < iterations; j++ {
+				_, err := RequireMiniProgramTextTestConfig()
+				if !errors.Is(err, ErrMiniProgramDisabled) {
+					readerErrors <- errors.New("mini program feature gate did not reject a disabled mini program")
+					return
+				}
+			}
+		}()
+	}
+
+	close(start)
+	waitGroup.Wait()
+	close(readerErrors)
+	for err := range readerErrors {
+		require.NoError(t, err)
+	}
 }
 
 func TestNewMiniAppConfigRejectsMissingCredentialsWithoutExposingSecrets(t *testing.T) {
