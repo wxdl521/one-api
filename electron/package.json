@@ -9,6 +9,7 @@
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
+    "build:remote:win": "electron-builder --win nsis",
     "build:linux": "electron-builder --linux"
   },
   "keywords": [
@@ -85,14 +86,9 @@
     "win": {
       "icon": "icon.png",
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "extraResources": [
-        {
-          "from": "../the-one.exe",
-          "to": "bin/the-one.exe"
-        },
         {
           "from": "../LICENSE",
           "to": "licenses/LICENSE"
