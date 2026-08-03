@@ -2,10 +2,14 @@ package router
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/QuantumNous/the-one/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMiniAppRouterKeepsTheBFFAndBrowserConfirmationRoutesSeparate(t *testing.T) {
@@ -38,5 +42,34 @@ func TestMiniAppRouterKeepsTheBFFAndBrowserConfirmationRoutesSeparate(t *testing
 	} {
 		_, found := routes[route]
 		assert.False(t, found, route)
+	}
+}
+
+func TestMiniAppFeatureGateRunsBeforeBodyLimitsAndAuthentication(t *testing.T) {
+	previousEnabled, previousTextEnabled := common.GetMiniProgramFeatureFlags()
+	common.OptionMapRWMutex.Lock()
+	common.MiniProgramEnabled = false
+	common.MiniProgramTextTestEnabled = false
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.MiniProgramEnabled = previousEnabled
+		common.MiniProgramTextTestEnabled = previousTextEnabled
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetMiniAppRouter(engine)
+	for _, target := range []string{
+		"/api/miniapp/v1/auth/wechat",
+		"/api/miniapp/bindings/confirm",
+	} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, target, strings.NewReader(strings.Repeat("x", 16<<10)))
+		engine.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusNotFound, response.Code)
+		assert.Contains(t, response.Body.String(), "MINIAPP_DISABLED")
 	}
 }

@@ -209,53 +209,60 @@ func CreateMiniAppBinding(pendingTicket string) (*MiniAppBindingStart, error) {
 	if err != nil {
 		return nil, err
 	}
-	pending, err := model.GetAuthFlow(pendingTicket, model.AuthFlowMatch{
-		Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin,
-	})
-	if err != nil {
-		return nil, err
-	}
-	var pendingPayload miniAppPendingIdentityPayload
-	if err := common.Unmarshal([]byte(pending.Payload), &pendingPayload); err != nil ||
-		pendingPayload.AppID == "" || pendingPayload.OpenIDHash == "" {
-		return nil, model.ErrAuthFlowInvalid
-	}
-	binding, err := model.CreateMiniAppBinding(model.MiniAppBindingCreate{
-		PendingFlowID: pending.Id,
-		AppID:         pendingPayload.AppID,
-		OpenIDHash:    pendingPayload.OpenIDHash,
-		ExpiresAt:     pending.ExpiresAt,
-	})
-	if err != nil {
-		return nil, err
-	}
-	payload, err := common.Marshal(miniAppBindingFlowPayload{
-		PendingFlowID: pending.Id,
-		BindingID:     binding.ID,
-		AppID:         pendingPayload.AppID,
-		OpenIDHash:    pendingPayload.OpenIDHash,
-	})
-	if err != nil {
-		return nil, err
-	}
-	bindingTicket, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-		Purpose:   model.AuthFlowPurposeMiniAppBind,
-		Provider:  miniAppAuthFlowProvider,
-		Intent:    model.AuthFlowIntentBind,
-		Payload:   string(payload),
-		ExpiresAt: pending.ExpiresAt,
-	})
-	if err != nil {
-		return nil, err
-	}
 	bindingURL, err := url.Parse(config.BindWebBaseURL)
 	if err != nil {
 		return nil, ErrMiniAppConfiguration
 	}
-	query := bindingURL.Query()
-	query.Set("binding_ticket", bindingTicket)
-	bindingURL.RawQuery = query.Encode()
-	return &MiniAppBindingStart{BindingID: binding.ID, BindURL: bindingURL.String()}, nil
+
+	var bindingID, bindingTicket string
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		pending, err := model.GetAuthFlowWithTx(tx, pendingTicket, model.AuthFlowMatch{
+			Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin,
+		})
+		if err != nil {
+			return err
+		}
+		var pendingPayload miniAppPendingIdentityPayload
+		if err := common.Unmarshal([]byte(pending.Payload), &pendingPayload); err != nil ||
+			pendingPayload.AppID == "" || pendingPayload.OpenIDHash == "" {
+			return model.ErrAuthFlowInvalid
+		}
+		binding, err := model.CreateMiniAppBindingWithTx(tx, model.MiniAppBindingCreate{
+			PendingFlowID: pending.Id,
+			AppID:         pendingPayload.AppID,
+			OpenIDHash:    pendingPayload.OpenIDHash,
+			ExpiresAt:     pending.ExpiresAt,
+		})
+		if err != nil {
+			return err
+		}
+		payload, err := common.Marshal(miniAppBindingFlowPayload{
+			PendingFlowID: pending.Id,
+			BindingID:     binding.ID,
+			AppID:         pendingPayload.AppID,
+			OpenIDHash:    pendingPayload.OpenIDHash,
+		})
+		if err != nil {
+			return err
+		}
+		bindingTicket, _, err = model.CreateAuthFlowWithTx(tx, model.AuthFlowCreate{
+			Purpose:   model.AuthFlowPurposeMiniAppBind,
+			Provider:  miniAppAuthFlowProvider,
+			Intent:    model.AuthFlowIntentBind,
+			Payload:   string(payload),
+			ExpiresAt: pending.ExpiresAt,
+		})
+		if err != nil {
+			return err
+		}
+		bindingID = binding.ID
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	bindingURL.Fragment = "binding_ticket=" + bindingTicket
+	return &MiniAppBindingStart{BindingID: bindingID, BindURL: bindingURL.String()}, nil
 }
 
 // ConfirmMiniAppBinding requires an authenticated browser session, then
@@ -345,8 +352,17 @@ func getMiniAppBindingStatus(pendingTicket, bindingID string) (string, error) {
 	if bindingID != "" && errors.Is(bindingErr, gorm.ErrRecordNotFound) {
 		return "", model.ErrAuthFlowInvalid
 	}
-	if bindingErr == nil && binding.Status == model.MiniAppBindingStatusBound {
-		return model.MiniAppBindingStatusBound, nil
+	if bindingErr == nil {
+		if binding.Status == model.MiniAppBindingStatusBound {
+			return model.MiniAppBindingStatusBound, nil
+		}
+		if !flow.ExpiresAt.After(time.Now()) || binding.Status == model.MiniAppBindingStatusExpired {
+			return model.MiniAppBindingStatusExpired, nil
+		}
+		if flow.ConsumedAt != nil {
+			return model.MiniAppBindingStatusExpired, nil
+		}
+		return model.MiniAppBindingStatusPending, nil
 	}
 	var identity model.WechatMiniIdentity
 	identityErr := model.DB.Where("app_id = ? AND open_id_hash = ?", payload.AppID, payload.OpenIDHash).First(&identity).Error
@@ -356,7 +372,7 @@ func getMiniAppBindingStatus(pendingTicket, bindingID string) (string, error) {
 	if !errors.Is(identityErr, gorm.ErrRecordNotFound) {
 		return "", identityErr
 	}
-	if !flow.ExpiresAt.After(time.Now()) || bindingErr == nil && binding.Status == model.MiniAppBindingStatusExpired {
+	if !flow.ExpiresAt.After(time.Now()) {
 		return model.MiniAppBindingStatusExpired, nil
 	}
 	if flow.ConsumedAt != nil {
@@ -525,7 +541,7 @@ func MiniAppAuthErrorCode(err error) (int, string) {
 		return http.StatusBadRequest, "MINIAPP_REGISTRATION_INVALID"
 	case errors.Is(err, model.ErrAuthFlowExpired), errors.Is(err, model.ErrMiniAppBindingExpired):
 		return http.StatusGone, "MINIAPP_TICKET_EXPIRED"
-	case errors.Is(err, model.ErrAuthFlowConsumed), errors.Is(err, model.ErrMiniAppBindingAlreadyBound), errors.Is(err, model.ErrWechatMiniIdentityAlreadyBound):
+	case errors.Is(err, model.ErrAuthFlowConsumed), errors.Is(err, model.ErrMiniAppBindingAlreadyExists), errors.Is(err, model.ErrMiniAppBindingAlreadyBound), errors.Is(err, model.ErrWechatMiniIdentityAlreadyBound):
 		return http.StatusConflict, "MINIAPP_TICKET_CONSUMED"
 	case errors.Is(err, model.ErrAuthFlowInvalid), errors.Is(err, model.ErrMiniAppBindingInvalid),
 		errors.Is(err, ErrMiniAppIdentityUnbound), errors.Is(err, ErrMiniAppSessionOwnership):

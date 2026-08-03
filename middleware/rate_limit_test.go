@@ -93,6 +93,35 @@ func TestRedisUserRateLimiterUsesSharedFixedWindow(t *testing.T) {
 	assert.Equal(t, 23*time.Second, redisServer.TTL(key))
 }
 
+func TestMiniAppRateLimitsUseDedicatedIPAndUserNamespaces(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	redisServer, _ := useRateLimitMiniRedis(t)
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.GET("/critical", rateLimitFactory(1, 60, "CT"), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/anonymous", MiniAppAnonymousIPRateLimit(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/authenticated", func(c *gin.Context) {
+		c.Set("id", 42)
+	}, MiniAppAuthenticatedUserRateLimit(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	remoteAddr := "192.0.2.70:12345"
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/critical", remoteAddr).Code)
+	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/critical", remoteAddr).Code)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/anonymous", remoteAddr).Code)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/authenticated", remoteAddr).Code)
+
+	assert.True(t, redisServer.Exists(redisIPRateLimitKey(MiniAppAnonymousRateLimitMark, "192.0.2.70")))
+	assert.True(t, redisServer.Exists(redisUserRateLimitKey(MiniAppAuthenticatedRateLimitMark, 42)))
+	assert.True(t, redisServer.Exists(redisIPRateLimitKey("CT", "192.0.2.70")))
+}
+
 func TestRedisEmailVerificationRateLimiterPreservesResponseAndTTL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	redisServer, _ := useRateLimitMiniRedis(t)

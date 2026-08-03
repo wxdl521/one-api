@@ -14,6 +14,18 @@ const miniAppSessionLoginMethod = "wechat-miniapp"
 
 const miniAppBindingRequestBodyMaxBytes = 8 << 10
 
+// MiniAppFeatureGate rejects disabled or incomplete Mini Program deployments
+// before rate limits, body parsing, bot checks, or authentication run.
+func MiniAppFeatureGate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if _, err := service.RequireMiniProgramConfig(); err != nil {
+			writeMiniAppAuthError(c, err)
+			return
+		}
+		c.Next()
+	}
+}
+
 // MiniAppAuth accepts only a live dashboard JWT backed by a Mini Program
 // session. It deliberately does not fall back to personal access tokens or
 // ordinary browser login sessions.

@@ -17,22 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute } from '@tanstack/react-router'
-import { z } from 'zod'
 
 import { MiniAppBindPage } from '@/features/miniapp-bind/miniapp-bind-page'
 
-const searchSchema = z
-  .object({
-    binding_ticket: z.string().max(512).optional(),
-  })
-  .passthrough()
-
 export const Route = createFileRoute('/miniapp-bind')({
-  validateSearch: searchSchema,
   component: MiniAppBindRoute,
 })
 
 function MiniAppBindRoute() {
-  const search = Route.useSearch()
-  return <MiniAppBindPage bindingTicket={search.binding_ticket} />
+  return <MiniAppBindPage />
 }

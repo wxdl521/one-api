@@ -13,19 +13,20 @@ import (
 func SetMiniAppRouter(router *gin.Engine) {
 	miniAppRouter := router.Group("/api/miniapp/v1")
 	miniAppRouter.Use(middleware.RouteTag("miniapp"))
+	miniAppRouter.Use(middleware.MiniAppFeatureGate())
 	miniAppRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	miniAppRouter.Use(middleware.BodyStorageCleanup())
 	miniAppRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	{
-		miniAppRouter.POST("/auth/wechat", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.MiniAppWechatLogin)
-		miniAppRouter.POST("/auth/register", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.MiniAppRegister)
-		miniAppRouter.POST("/bindings", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.MiniAppStartBinding)
-		miniAppRouter.GET("/bindings/:id", middleware.CriticalRateLimit(), controller.MiniAppBindingStatus)
-		miniAppRouter.POST("/auth/renew", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.MiniAppRenewLogin)
+		miniAppRouter.POST("/auth/wechat", middleware.MiniAppAnonymousIPRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.MiniAppWechatLogin)
+		miniAppRouter.POST("/auth/register", middleware.MiniAppAnonymousIPRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.MiniAppRegister)
+		miniAppRouter.POST("/bindings", middleware.MiniAppAnonymousIPRateLimit(), anonymousRequestBodyLimit, controller.MiniAppStartBinding)
+		miniAppRouter.GET("/bindings/:id", middleware.MiniAppAnonymousIPRateLimit(), controller.MiniAppBindingStatus)
+		miniAppRouter.POST("/auth/renew", middleware.MiniAppAnonymousIPRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.MiniAppRenewLogin)
 
 		protected := miniAppRouter.Group("/")
-		protected.Use(middleware.MiniAppAuth(), middleware.CriticalRateLimit())
+		protected.Use(middleware.MiniAppAuth(), middleware.MiniAppAuthenticatedUserRateLimit())
 		{
 			protected.POST("/auth/logout", controller.MiniAppLogout)
 		}
@@ -33,9 +34,10 @@ func SetMiniAppRouter(router *gin.Engine) {
 
 	browserBinding := router.Group("/api/miniapp/bindings")
 	browserBinding.Use(middleware.RouteTag("api"))
+	browserBinding.Use(middleware.MiniAppFeatureGate())
 	browserBinding.Use(middleware.BodyStorageCleanup())
 	browserBinding.Use(middleware.MiniAppBindingRequestBodyLimit())
-	browserBinding.Use(middleware.UserAuth(), middleware.CriticalRateLimit())
+	browserBinding.Use(middleware.UserAuth(), middleware.MiniAppAuthenticatedUserRateLimit())
 	{
 		browserBinding.POST("/confirm", controller.ConfirmMiniAppBrowserBinding)
 	}

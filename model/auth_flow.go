@@ -100,6 +100,15 @@ func authFlowTokenHash(token string) string {
 }
 
 func CreateAuthFlow(input AuthFlowCreate) (string, *AuthFlow, error) {
+	return CreateAuthFlowWithTx(DB, input)
+}
+
+// CreateAuthFlowWithTx creates an opaque auth flow in a caller-owned
+// transaction so related durable state can commit atomically with the flow.
+func CreateAuthFlowWithTx(tx *gorm.DB, input AuthFlowCreate) (string, *AuthFlow, error) {
+	if tx == nil {
+		return "", nil, ErrAuthFlowInvalid
+	}
 	if strings.TrimSpace(input.Purpose) == "" || input.ExpiresAt.IsZero() || !input.ExpiresAt.After(time.Now()) {
 		return "", nil, ErrAuthFlowInvalid
 	}
@@ -118,7 +127,7 @@ func CreateAuthFlow(input AuthFlowCreate) (string, *AuthFlow, error) {
 		Payload:   input.Payload,
 		ExpiresAt: input.ExpiresAt,
 	}
-	if err := DB.Create(flow).Error; err != nil {
+	if err := tx.Create(flow).Error; err != nil {
 		return "", nil, err
 	}
 	return token, flow, nil
@@ -168,8 +177,22 @@ func GetAuthFlow(token string, match AuthFlowMatch) (*AuthFlow, error) {
 	if token == "" || match.Purpose == "" {
 		return nil, ErrAuthFlowInvalid
 	}
+	return getAuthFlow(applyAuthFlowMatch(DB, token, match))
+}
+
+// GetAuthFlowWithTx validates a still-live flow while holding its row lock.
+// It is for setup ceremonies that need to reserve a parent flow before
+// creating child records in the same transaction.
+func GetAuthFlowWithTx(tx *gorm.DB, token string, match AuthFlowMatch) (*AuthFlow, error) {
+	if tx == nil || token == "" || match.Purpose == "" {
+		return nil, ErrAuthFlowInvalid
+	}
+	return getAuthFlow(applyAuthFlowMatch(lockForUpdate(tx), token, match))
+}
+
+func getAuthFlow(query *gorm.DB) (*AuthFlow, error) {
 	var flow AuthFlow
-	if err := applyAuthFlowMatch(DB, token, match).First(&flow).Error; err != nil {
+	if err := query.First(&flow).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrAuthFlowInvalid
 		}

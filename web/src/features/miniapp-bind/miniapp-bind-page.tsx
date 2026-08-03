@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -33,44 +33,39 @@ import {
 import { api } from '@/lib/api'
 
 import {
+  consumeMiniAppBindingURL,
   createMiniAppBindingConfirmationPayload,
-  miniAppBindURLWithoutTicket,
 } from './lib/binding-ticket'
 
-interface MiniAppBindPageProps {
-  bindingTicket?: string
-}
+let initialBindingTicket: string | null | undefined
 
-const bindingTicketStorageKey = 'miniapp:binding-ticket'
-
-function captureBindingTicket(bindingTicket?: string) {
+function captureBindingTicketFromLocation() {
   if (typeof window === 'undefined') return null
-  const cleanedURL = miniAppBindURLWithoutTicket(window.location.href)
-  const payload = bindingTicket
-    ? createMiniAppBindingConfirmationPayload(bindingTicket)
-    : null
-  if (cleanedURL === null || payload === null) return null
-  window.sessionStorage.setItem(bindingTicketStorageKey, payload.binding_ticket)
-  return payload.binding_ticket
+  const captured = consumeMiniAppBindingURL(window.location.href)
+  if (captured === null) return null
+  window.history.replaceState(window.history.state, '', captured.visibleURL)
+  return captured.bindingTicket
 }
 
-function storedBindingTicket() {
-  if (typeof window === 'undefined') return null
-  const ticket = window.sessionStorage.getItem(bindingTicketStorageKey)
-  if (!ticket) return null
-  return createMiniAppBindingConfirmationPayload(ticket)?.binding_ticket ?? null
+// This runs during module evaluation, before React renders this route or any
+// route-level instrumentation can observe the handoff URL. The ticket stays
+// in memory only for the confirmation request.
+if (typeof window !== 'undefined') {
+  initialBindingTicket = captureBindingTicketFromLocation()
 }
 
-export function MiniAppBindPage(props: MiniAppBindPageProps) {
+function takeBindingTicketFromLocation() {
+  if (initialBindingTicket !== undefined) {
+    const bindingTicket = initialBindingTicket
+    initialBindingTicket = undefined
+    return bindingTicket
+  }
+  return captureBindingTicketFromLocation()
+}
+
+export function MiniAppBindPage() {
   const { t } = useTranslation()
-  const [bindingTicket] = useState(() => {
-    const capturedTicket = captureBindingTicket(props.bindingTicket)
-    if (capturedTicket !== null) return capturedTicket
-    if (typeof window !== 'undefined' && window.location.search !== '') {
-      return null
-    }
-    return storedBindingTicket()
-  })
+  const [bindingTicket] = useState(takeBindingTicketFromLocation)
   const mutation = useMutation({
     mutationFn: async () => {
       const payload = bindingTicket
@@ -84,20 +79,7 @@ export function MiniAppBindPage(props: MiniAppBindPageProps) {
         throw new Error('mini app binding confirmation failed')
       }
     },
-    onSuccess: () => {
-      window.sessionStorage.removeItem(bindingTicketStorageKey)
-    },
   })
-
-  useEffect(() => {
-    const cleanedURL = miniAppBindURLWithoutTicket(window.location.href)
-    const fallbackURL = `${window.location.pathname}${window.location.hash}`
-    window.history.replaceState(
-      window.history.state,
-      '',
-      cleanedURL ?? fallbackURL
-    )
-  }, [])
 
   const isInvalid = bindingTicket === null
   const isConfirmed = mutation.isSuccess

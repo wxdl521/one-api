@@ -20,33 +20,40 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
+	consumeMiniAppBindingURL,
   createMiniAppBindingConfirmationPayload,
-  miniAppBindURLWithoutTicket,
 } from './binding-ticket'
 
 describe('mini program browser binding ticket handling', () => {
-  test('sends only the opaque bind ticket and removes it from the browser URL', () => {
+  test('captures the bind ticket from the fragment and removes it from the visible URL', () => {
     assert.deepEqual(
       createMiniAppBindingConfirmationPayload('bind-flow-ticket'),
       { binding_ticket: 'bind-flow-ticket' }
     )
-    assert.equal(
-      miniAppBindURLWithoutTicket(
-        '/miniapp-bind?binding_ticket=bind-flow-ticket#confirm'
+    assert.deepEqual(
+      consumeMiniAppBindingURL(
+        '/miniapp-bind#binding_ticket=bind-flow-ticket'
       ),
-      '/miniapp-bind#confirm'
+      {
+        bindingTicket: 'bind-flow-ticket',
+        visibleURL: '/miniapp-bind',
+      }
     )
   })
 
-  test('rejects missing, oversized, and substituted pending identity tickets', () => {
+  test('rejects query tickets and always removes opaque data from the visible URL', () => {
     assert.equal(createMiniAppBindingConfirmationPayload(''), null)
     assert.equal(
       createMiniAppBindingConfirmationPayload('x'.repeat(513)),
       null
     )
-    assert.equal(
-      miniAppBindURLWithoutTicket('/miniapp-bind?ticket=pending-ticket'),
-      null
+    assert.deepEqual(
+      consumeMiniAppBindingURL('/miniapp-bind?binding_ticket=bind-flow-ticket'),
+      { bindingTicket: null, visibleURL: '/miniapp-bind' }
+    )
+    assert.deepEqual(
+      consumeMiniAppBindingURL('/miniapp-bind#ticket=pending-ticket'),
+      { bindingTicket: null, visibleURL: '/miniapp-bind' }
     )
   })
 })

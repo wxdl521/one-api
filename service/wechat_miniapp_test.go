@@ -320,10 +320,10 @@ func TestMiniAppBindingRequiresBrowserSessionAndConsumesFlowsOnce(t *testing.T) 
 	require.NotEmpty(t, binding.BindingID)
 	bindURL, err := url.Parse(binding.BindURL)
 	require.NoError(t, err)
-	assert.Len(t, bindURL.Query(), 1)
-	assert.Empty(t, bindURL.Query().Get("ticket"))
-	bindTicket := bindURL.Query().Get("binding_ticket")
+	assert.Empty(t, bindURL.RawQuery)
+	bindTicket := miniAppBindingTicketFromURL(t, binding.BindURL)
 	require.NotEmpty(t, bindTicket)
+	assert.NotContains(t, bindURL.RequestURI(), bindTicket)
 	_, err = model.GetAuthFlow(pending.PendingTicket, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin})
 	require.NoError(t, err, "creating a bind flow must not consume the pending ticket")
 	status, err := GetMiniAppBindingStatusForBinding(pending.PendingTicket, binding.BindingID)
@@ -349,6 +349,100 @@ func TestMiniAppBindingRequiresBrowserSessionAndConsumesFlowsOnce(t *testing.T) 
 	assert.Equal(t, user.Id, identity.UserID)
 }
 
+func TestMiniAppBindingReplayCreatesOnlyOneBindingAndBindFlow(t *testing.T) {
+	useTestSessionSecret(t)
+	setupAuthSessionTestDB(t)
+	useMiniAppExchangeTestConfig(t)
+	payload, err := common.Marshal(miniAppPendingIdentityPayload{
+		AppID:      "wx-test-app",
+		OpenIDHash: strings.Repeat("e", 64),
+	})
+	require.NoError(t, err)
+	pendingTicket, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose:   model.AuthFlowPurposeMiniAppPendingIdentity,
+		Provider:  miniAppAuthFlowProvider,
+		Intent:    model.AuthFlowIntentLogin,
+		Payload:   string(payload),
+		ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+
+	type result struct {
+		binding *MiniAppBindingStart
+		err     error
+	}
+	const callers = 4
+	start := make(chan struct{})
+	results := make(chan result, callers)
+	var waitGroup sync.WaitGroup
+	for range callers {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			binding, err := CreateMiniAppBinding(pendingTicket)
+			results <- result{binding: binding, err: err}
+		}()
+	}
+	close(start)
+	waitGroup.Wait()
+	close(results)
+
+	var successful *MiniAppBindingStart
+	for result := range results {
+		if result.err == nil {
+			require.Nil(t, successful)
+			successful = result.binding
+			continue
+		}
+		assert.ErrorIs(t, result.err, model.ErrMiniAppBindingAlreadyExists)
+	}
+	require.NotNil(t, successful)
+	miniAppBindingTicketFromURL(t, successful.BindURL)
+
+	var bindingCount, bindFlowCount int64
+	require.NoError(t, model.DB.Model(&model.MiniAppBinding{}).Count(&bindingCount).Error)
+	require.NoError(t, model.DB.Model(&model.AuthFlow{}).
+		Where("purpose = ?", model.AuthFlowPurposeMiniAppBind).Count(&bindFlowCount).Error)
+	assert.Equal(t, int64(1), bindingCount)
+	assert.Equal(t, int64(1), bindFlowCount)
+	status, err := GetMiniAppBindingStatusForBinding(pendingTicket, successful.BindingID)
+	require.NoError(t, err)
+	assert.Equal(t, model.MiniAppBindingStatusPending, status)
+}
+
+func TestMiniAppBindingStatusDoesNotUseIdentityFallbackWhileBindingIsPending(t *testing.T) {
+	useTestSessionSecret(t)
+	setupAuthSessionTestDB(t)
+	useMiniAppExchangeTestConfig(t)
+	owner := &model.User{
+		Username: "existing-miniapp-owner", Password: "unused-password-hash", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "existing-owner", AuthVersion: 1,
+	}
+	require.NoError(t, model.DB.Create(owner).Error)
+	openIDHash := strings.Repeat("f", 64)
+	payload, err := common.Marshal(miniAppPendingIdentityPayload{AppID: "wx-test-app", OpenIDHash: openIDHash})
+	require.NoError(t, err)
+	pendingTicket, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider,
+		Intent: model.AuthFlowIntentLogin, Payload: string(payload), ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	binding, err := CreateMiniAppBinding(pendingTicket)
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := model.ClaimWechatMiniIdentityWithTx(tx, "wx-test-app", openIDHash, owner.Id)
+		return err
+	}))
+
+	status, err := GetMiniAppBindingStatus(pendingTicket)
+	require.NoError(t, err)
+	assert.Equal(t, model.MiniAppBindingStatusPending, status)
+	status, err = GetMiniAppBindingStatusForBinding(pendingTicket, binding.BindingID)
+	require.NoError(t, err)
+	assert.Equal(t, model.MiniAppBindingStatusPending, status)
+}
+
 func TestMiniAppBindingRejectsCrossBoundTicketWithoutConsumption(t *testing.T) {
 	useTestSessionSecret(t)
 	user := setupAuthSessionTestDB(t)
@@ -369,7 +463,7 @@ func TestMiniAppBindingRejectsCrossBoundTicketWithoutConsumption(t *testing.T) {
 	require.NoError(t, err)
 	bindingURL, err := url.Parse(binding.BindURL)
 	require.NoError(t, err)
-	bindFlow, err := model.GetAuthFlow(bindingURL.Query().Get("binding_ticket"), model.AuthFlowMatch{
+	bindFlow, err := model.GetAuthFlow(miniAppBindingTicketFromURL(t, bindingURL.String()), model.AuthFlowMatch{
 		Purpose: model.AuthFlowPurposeMiniAppBind, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentBind,
 	})
 	require.NoError(t, err)
@@ -429,12 +523,25 @@ func TestMiniAppBindingRejectsSubjectAlreadyHeldByAnotherUser(t *testing.T) {
 	browserIdentity, err := ParseAccessToken(browser.AccessToken)
 	require.NoError(t, err)
 
-	err = ConfirmMiniAppBinding(bindingURL.Query().Get("binding_ticket"), browserIdentity)
+	err = ConfirmMiniAppBinding(miniAppBindingTicketFromURL(t, bindingURL.String()), browserIdentity)
 
 	assert.ErrorIs(t, err, model.ErrWechatMiniIdentityAlreadyBound)
 	status, err := GetMiniAppBindingStatus(ticket)
 	require.NoError(t, err)
-	assert.Equal(t, model.MiniAppBindingStatusBound, status)
+	assert.Equal(t, model.MiniAppBindingStatusPending, status)
+}
+
+func miniAppBindingTicketFromURL(t *testing.T, rawURL string) string {
+	t.Helper()
+	bindingURL, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	require.Empty(t, bindingURL.RawQuery)
+	fragment, err := url.ParseQuery(bindingURL.Fragment)
+	require.NoError(t, err)
+	require.Len(t, fragment, 1)
+	ticket := fragment.Get("binding_ticket")
+	require.NotEmpty(t, ticket)
+	return ticket
 }
 
 func TestRegisterMiniAppUserUsesPendingTicketAndNormalPasswordRules(t *testing.T) {

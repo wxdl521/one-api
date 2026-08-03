@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -17,9 +18,10 @@ const (
 )
 
 var (
-	ErrMiniAppBindingInvalid      = errors.New("mini app binding is invalid")
-	ErrMiniAppBindingExpired      = errors.New("mini app binding has expired")
-	ErrMiniAppBindingAlreadyBound = errors.New("mini app binding is already bound")
+	ErrMiniAppBindingInvalid       = errors.New("mini app binding is invalid")
+	ErrMiniAppBindingExpired       = errors.New("mini app binding has expired")
+	ErrMiniAppBindingAlreadyExists = errors.New("mini app binding already exists for the pending flow")
+	ErrMiniAppBindingAlreadyBound  = errors.New("mini app binding is already bound")
 )
 
 // MiniAppBinding records the pending and confirmed state of a Mini Program
@@ -27,7 +29,7 @@ var (
 // the pending auth-flow ID and the HMAC-derived subject digest.
 type MiniAppBinding struct {
 	ID            string     `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	PendingFlowID int64      `json:"-" gorm:"not null;index:idx_miniapp_binding_pending_subject,priority:1"`
+	PendingFlowID int64      `json:"-" gorm:"not null;uniqueIndex:idx_miniapp_binding_pending_flow;index:idx_miniapp_binding_pending_subject,priority:1"`
 	AppID         string     `json:"app_id" gorm:"type:varchar(64);not null;index:idx_miniapp_binding_pending_subject,priority:2"`
 	OpenIDHash    string     `json:"-" gorm:"type:char(64);not null;index:idx_miniapp_binding_pending_subject,priority:3"`
 	UserID        *int       `json:"user_id,omitempty" gorm:"index"`
@@ -60,8 +62,15 @@ type MiniAppBindingConfirmation struct {
 // CreateMiniAppBinding creates one short-lived browser binding state record.
 // The generated opaque ID is never sufficient to read or confirm the binding.
 func CreateMiniAppBinding(input MiniAppBindingCreate) (*MiniAppBinding, error) {
+	return CreateMiniAppBindingWithTx(DB, input)
+}
+
+// CreateMiniAppBindingWithTx reserves the sole browser binding for a pending
+// identity flow. The pending-flow uniqueness constraint is portable across
+// SQLite, MySQL, and PostgreSQL through GORM's conflict clause.
+func CreateMiniAppBindingWithTx(tx *gorm.DB, input MiniAppBindingCreate) (*MiniAppBinding, error) {
 	appID, openIDHash, valid := normalizeWechatMiniSubject(input.AppID, input.OpenIDHash)
-	if input.PendingFlowID <= 0 || !valid || input.ExpiresAt.IsZero() || !input.ExpiresAt.After(time.Now()) {
+	if tx == nil || input.PendingFlowID <= 0 || !valid || input.ExpiresAt.IsZero() || !input.ExpiresAt.After(time.Now()) {
 		return nil, ErrMiniAppBindingInvalid
 	}
 	bytes := make([]byte, miniAppBindingIDBytes)
@@ -76,8 +85,15 @@ func CreateMiniAppBinding(input MiniAppBindingCreate) (*MiniAppBinding, error) {
 		Status:        MiniAppBindingStatusPending,
 		ExpiresAt:     input.ExpiresAt,
 	}
-	if err := DB.Create(binding).Error; err != nil {
-		return nil, err
+	result := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "pending_flow_id"}},
+		DoNothing: true,
+	}).Create(binding)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, ErrMiniAppBindingAlreadyExists
 	}
 	return binding, nil
 }

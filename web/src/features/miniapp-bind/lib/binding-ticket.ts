@@ -17,6 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 const maxBindingTicketLength = 512
+const miniAppBindPath = '/miniapp-bind'
+
+export interface MiniAppBindingURLCapture {
+  bindingTicket: string | null
+  visibleURL: string
+}
 
 export function createMiniAppBindingConfirmationPayload(
   bindingTicket: string
@@ -31,21 +37,28 @@ export function createMiniAppBindingConfirmationPayload(
   return { binding_ticket: normalizedTicket }
 }
 
-export function miniAppBindURLWithoutTicket(rawURL: string): string | null {
+export function consumeMiniAppBindingURL(
+  rawURL: string
+): MiniAppBindingURLCapture | null {
   let url: URL
   try {
     url = new URL(rawURL, 'https://console.invalid')
   } catch {
     return null
   }
-  if (url.pathname !== '/miniapp-bind') return null
-  const bindingTickets = url.searchParams.getAll('binding_ticket')
+  if (url.pathname !== miniAppBindPath) return null
+
+  const visibleURL = url.pathname
+  if (url.search !== '') return { bindingTicket: null, visibleURL }
+
+  const fragment = new URLSearchParams(url.hash.slice(1))
+  const bindingTickets = fragment.getAll('binding_ticket')
   if (
     bindingTickets.length !== 1 ||
-    url.searchParams.size !== 1 ||
+    fragment.size !== 1 ||
     createMiniAppBindingConfirmationPayload(bindingTickets[0]) === null
   ) {
-    return null
+    return { bindingTicket: null, visibleURL }
   }
-  return `${url.pathname}${url.hash}`
+  return { bindingTicket: bindingTickets[0].trim(), visibleURL }
 }
