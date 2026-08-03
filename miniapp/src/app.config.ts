@@ -1,3 +1,5 @@
+import { miniAppStrings } from './i18n/strings'
+
 const appConfig = {
   pages: [
     'pages/index/index',
@@ -9,6 +11,12 @@ const appConfig = {
     'pages/orders/index',
     'pages/text-test/index',
   ],
+  window: {
+    navigationBarTitleText: miniAppStrings.serviceConnection,
+    navigationBarBackgroundColor: '#ffffff',
+    navigationBarTextStyle: 'black',
+    backgroundColor: '#ffffff',
+  },
 }
 
 export default appConfig

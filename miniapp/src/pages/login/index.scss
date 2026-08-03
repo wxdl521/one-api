@@ -1,0 +1,37 @@
+.login-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
+  min-height: 100vh;
+  padding: 72rpx 48rpx;
+}
+
+.login-title {
+  color: #111827;
+  font-size: 44rpx;
+  font-weight: 600;
+}
+
+.login-description {
+  color: #4b5563;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.login-error {
+  color: #b91c1c;
+  font-size: 28rpx;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.login-form input {
+  border: 1rpx solid #d1d5db;
+  border-radius: 12rpx;
+  min-height: 84rpx;
+  padding: 0 24rpx;
+}

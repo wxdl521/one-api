@@ -1,5 +1,5 @@
 import { miniAppStrings } from '../../i18n/strings'
 
 export default {
-  navigationBarTitleText: miniAppStrings.serviceConnection,
+  navigationBarTitleText: miniAppStrings.binding,
 }
