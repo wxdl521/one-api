@@ -2,7 +2,6 @@ package model
 
 import (
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -23,21 +22,26 @@ func setupWechatMiniIdentityTest(t *testing.T) {
 	})
 }
 
-func setupConcurrentMiniAppBindingTest(t *testing.T) {
+func setupConcurrentMiniAppBindingTest(t *testing.T) (*gorm.DB, *gorm.DB) {
 	t.Helper()
-	previousDB := DB
 	databasePath := filepath.ToSlash(filepath.Join(t.TempDir(), "miniapp-bindings.db"))
-	db, err := gorm.Open(sqlite.Open("file:"+databasePath+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"), &gorm.Config{})
+	dsn := "file:" + databasePath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	primaryDB, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	sqlDB, err := db.DB()
+	contenderDB, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(2)
-	require.NoError(t, db.AutoMigrate(&WechatMiniIdentity{}, &MiniAppBinding{}))
-	DB = db
+	primarySQLDB, err := primaryDB.DB()
+	require.NoError(t, err)
+	contenderSQLDB, err := contenderDB.DB()
+	require.NoError(t, err)
+	primarySQLDB.SetMaxOpenConns(1)
+	contenderSQLDB.SetMaxOpenConns(1)
+	require.NoError(t, primaryDB.AutoMigrate(&WechatMiniIdentity{}, &MiniAppBinding{}))
 	t.Cleanup(func() {
-		DB = previousDB
-		_ = sqlDB.Close()
+		_ = contenderSQLDB.Close()
+		_ = primarySQLDB.Close()
 	})
+	return primaryDB, contenderDB
 }
 
 func TestWechatMiniIdentityRequiresUniqueAppAndSubjectDigest(t *testing.T) {
@@ -179,14 +183,16 @@ func TestExpiredMiniAppBindingsAreMarkedThenRetainedForCleanupWindow(t *testing.
 }
 
 func TestMiniAppBindingConcurrentConfirmationBindsExactlyOnce(t *testing.T) {
-	setupConcurrentMiniAppBindingTest(t)
-	binding, err := CreateMiniAppBinding(MiniAppBindingCreate{
+	primaryDB, contenderDB := setupConcurrentMiniAppBindingTest(t)
+	binding := MiniAppBinding{
+		ID:            "concurrent-confirmation-binding",
 		PendingFlowID: 88,
 		AppID:         "wx-miniapp-a",
 		OpenIDHash:    "3333333333333333333333333333333333333333333333333333333333333333",
 		ExpiresAt:     time.Now().Add(time.Minute),
-	})
-	require.NoError(t, err)
+		Status:        MiniAppBindingStatusPending,
+	}
+	require.NoError(t, primaryDB.Create(&binding).Error)
 
 	confirmation := MiniAppBindingConfirmation{
 		BindingID:     binding.ID,
@@ -195,27 +201,35 @@ func TestMiniAppBindingConcurrentConfirmationBindsExactlyOnce(t *testing.T) {
 		OpenIDHash:    binding.OpenIDHash,
 		UserID:        101,
 	}
-	start := make(chan struct{})
+	confirmationStarted := make(chan struct{}, 2)
+	releaseConfirmation := make(chan struct{})
+	callbackName := "test:sync_miniapp_binding_confirmation"
+	for _, db := range []*gorm.DB{primaryDB, contenderDB} {
+		require.NoError(t, db.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+			if tx.Statement != nil && tx.Statement.Table == "miniapp_bindings" {
+				confirmationStarted <- struct{}{}
+				<-releaseConfirmation
+			}
+		}))
+	}
+
 	errs := make(chan error, 2)
-	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			errs <- DB.Transaction(func(tx *gorm.DB) error {
+	for _, db := range []*gorm.DB{primaryDB, contenderDB} {
+		go func(db *gorm.DB) {
+			errs <- db.Transaction(func(tx *gorm.DB) error {
 				_, err := ConfirmMiniAppBindingWithTx(tx, confirmation)
 				return err
 			})
-		}()
+		}(db)
 	}
-	close(start)
-	wg.Wait()
-	close(errs)
+	<-confirmationStarted
+	<-confirmationStarted
+	close(releaseConfirmation)
 
 	successes := 0
 	failures := 0
-	for err := range errs {
+	for range 2 {
+		err := <-errs
 		if err == nil {
 			successes++
 			continue
@@ -227,7 +241,7 @@ func TestMiniAppBindingConcurrentConfirmationBindsExactlyOnce(t *testing.T) {
 	assert.Equal(t, 1, failures)
 
 	var stored MiniAppBinding
-	require.NoError(t, DB.First(&stored, "id = ?", binding.ID).Error)
+	require.NoError(t, primaryDB.First(&stored, "id = ?", binding.ID).Error)
 	require.NotNil(t, stored.UserID)
 	assert.Equal(t, 101, *stored.UserID)
 	assert.Equal(t, MiniAppBindingStatusBound, stored.Status)
