@@ -73,6 +73,23 @@ func SetApiRouter(router *gin.Engine) {
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UniversalVerify)
 
+		agentConnectRoute := apiRouter.Group("/agent-connect")
+		{
+			agentConnectRoute.POST("/requests", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.CreateAgentConnectRequest)
+			agentConnectRoute.POST("/requests/:request_id/reauthenticate", middleware.SessionCookieOriginGuard(), middleware.TryUserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.ForceAgentConnectReauthentication)
+			agentConnectRoute.POST("/exchange", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ExchangeAgentConnectRequest)
+			agentConnectRoute.POST("/pairings", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.CreateAgentConnectPairing)
+			agentConnectRoute.POST("/pairings/:request_id/exchange", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ExchangeAgentConnectPairing)
+
+			authorizedAgentConnectRoute := agentConnectRoute.Group("/requests")
+			authorizedAgentConnectRoute.Use(middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache())
+			{
+				authorizedAgentConnectRoute.GET("/:request_id", controller.GetAgentConnectRequestOptions)
+				authorizedAgentConnectRoute.POST("/:request_id/authorize", controller.AuthorizeAgentConnectRequest)
+				authorizedAgentConnectRoute.POST("/:request_id/cancel", controller.CancelAgentConnectRequest)
+			}
+		}
+
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/auth/refresh", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.RefreshAuth)
@@ -198,6 +215,28 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/users/:id/subscriptions/reset", controller.AdminResetUserSubscriptionsByPlan)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+		}
+
+		productRoute := apiRouter.Group("/product")
+		productRoute.Use(middleware.UserAuth())
+		{
+			productRoute.GET("", controller.ListProducts)
+			productRoute.POST("/orders", controller.CreateProductOrder)
+			productRoute.GET("/orders/self", controller.ListSelfProductOrders)
+			productRoute.GET("/:id", controller.GetProduct)
+		}
+		productAdminRoute := apiRouter.Group("/product/admin")
+		productAdminRoute.Use(middleware.AdminAuth())
+		{
+			productAdminRoute.GET("", controller.AdminListProducts)
+			productAdminRoute.POST("/upload", controller.AdminUploadProductImage)
+			productAdminRoute.POST("", controller.AdminCreateProduct)
+			productAdminRoute.PUT("/:id", controller.AdminUpdateProduct)
+			productAdminRoute.PATCH("/:id/status", controller.AdminUpdateProductStatus)
+			productAdminRoute.GET("/orders", controller.AdminListProductOrders)
+			productAdminRoute.PATCH("/orders/:id/confirm", controller.AdminConfirmProductOrder)
+			productAdminRoute.PATCH("/orders/:id/ship", controller.AdminShipProductOrder)
+			productAdminRoute.PATCH("/orders/:id/cancel", controller.AdminCancelProductOrder)
 		}
 
 		// Subscription payment callbacks (no auth)

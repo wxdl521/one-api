@@ -30,13 +30,14 @@ import {
   ServerCog,
   Settings,
   Ticket,
+  ShoppingBag,
   User,
   Users,
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -104,6 +105,16 @@ export function useSidebarData(): SidebarData {
         title: t('Personal'),
         items: [
           {
+            title: t('Products'),
+            url: '/products',
+            icon: ShoppingBag,
+          },
+          {
+            title: t('My orders'),
+            url: '/products/orders',
+            icon: ShoppingBag,
+          },
+          {
             title: t('Wallet'),
             url: '/wallet',
             icon: Wallet,
@@ -138,6 +149,16 @@ export function useSidebarData(): SidebarData {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
+          },
+          {
+            title: t('Product Management'),
+            url: '/products/manage',
+            icon: ShoppingBag,
+          },
+          {
+            title: t('Product Orders'),
+            url: '/products/orders/manage',
+            icon: ShoppingBag,
           },
           {
             title: t('Subscriptions'),
