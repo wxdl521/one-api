@@ -114,7 +114,6 @@ export async function request<TResponse, TData = unknown>(
   const requestId = getRequestId()
   const header: Record<string, string> = {
     'content-type': 'application/json',
-    'X-Request-ID': requestId,
   }
 
   if (options.auth === 'session') {
@@ -142,7 +141,7 @@ export async function request<TResponse, TData = unknown>(
         header,
         timeout: requestTimeout,
       })
-      const responseRequestId = getHeaderValue(response.header, 'x-request-id') ?? requestId
+      const responseRequestId = getHeaderValue(response.header, 'x-oneapi-request-id') ?? requestId
       const envelope = asEnvelope(response.data)
       if (response.statusCode >= 500 && options.method === 'GET' && attempt + 1 < attemptLimit) {
         lastError = toApiError(response.statusCode, envelope, responseRequestId)

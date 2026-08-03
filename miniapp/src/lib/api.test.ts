@@ -35,7 +35,7 @@ describe('mini program API client', () => {
     })
     taro.request.mockResolvedValue({
       statusCode: 200,
-      header: { 'x-request-id': 'server-request-id' },
+      header: { 'x-oneapi-request-id': 'server-request-id' },
       data: { success: true, message: '', data: { ok: true } },
     })
 
@@ -50,7 +50,6 @@ describe('mini program API client', () => {
         timeout: 10_000,
         header: expect.objectContaining({
           Authorization: 'Bearer miniapp-access-token',
-          'X-Request-ID': expect.any(String),
         }),
       }),
     )
@@ -68,6 +67,7 @@ describe('mini program API client', () => {
 
     const options = taro.request.mock.calls[0]?.[0] as { header: Record<string, string> }
     expect(options.header.Authorization).toBeUndefined()
+    expect(options.header['X-Request-ID']).toBeUndefined()
   })
 
   it('retries a transient GET once but never retries a POST', async () => {
@@ -102,7 +102,7 @@ describe('mini program API client', () => {
     })
     taro.request.mockResolvedValue({
       statusCode: 401,
-      header: { 'x-request-id': 'server-request-id' },
+      header: { 'X-Oneapi-Request-Id': 'server-request-id' },
       data: { success: false, code: 'MINIAPP_SESSION_INVALID', message: 'Unauthorized' },
     })
 
@@ -113,6 +113,20 @@ describe('mini program API client', () => {
       requestId: 'server-request-id',
     })
     expect(getMiniAppSession()).toBeNull()
+  })
+
+  it('uses a local display ID only when the server omits its correlation header', async () => {
+    const { request } = await loadApi()
+    taro.request.mockResolvedValue({
+      statusCode: 500,
+      header: {},
+      data: { success: false, code: 'MINIAPP_INTERNAL_ERROR', message: 'Internal Server Error' },
+    })
+
+    await expect(request({ path: '/auth/wechat', method: 'POST' })).rejects.toMatchObject({
+      code: 'MINIAPP_INTERNAL_ERROR',
+      requestId: expect.stringMatching(/^miniapp-/),
+    })
   })
 
   it('fails closed when the compiled API base URL is absent', async () => {
