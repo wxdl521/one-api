@@ -75,6 +75,7 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 
 func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.T) {
 	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&WechatMiniIdentity{}, &MiniAppBinding{}))
 	server := useUserCacheMiniRedis(t)
 
 	user := User{
@@ -99,6 +100,22 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 		TokenHash: "hard-delete-success-flow", Purpose: AuthFlowPurposeTwoFALogin,
 		UserId: user.Id, ExpiresAt: time.Now().Add(time.Minute),
 	}).Error)
+	require.NoError(t, DB.Create(&WechatMiniIdentity{
+		AppID:      "wx-hard-delete",
+		OpenIDHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		UserID:     user.Id,
+	}).Error)
+	boundAt := time.Now()
+	require.NoError(t, DB.Create(&MiniAppBinding{
+		ID:            "hard-delete-miniapp-binding",
+		PendingFlowID: 1,
+		AppID:         "wx-hard-delete",
+		OpenIDHash:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		UserID:        &user.Id,
+		Status:        MiniAppBindingStatusBound,
+		ExpiresAt:     boundAt.Add(time.Minute),
+		BoundAt:       &boundAt,
+	}).Error)
 	require.NoError(t, populateUserCache(user))
 	// Administrative hard deletion commonly targets an already soft-deleted
 	// user; the shared version increment must therefore query unscoped.
@@ -118,6 +135,8 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 		&UserSession{},
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
+		&WechatMiniIdentity{},
+		&MiniAppBinding{},
 	} {
 		require.NoError(t, DB.Unscoped().Model(record).Where("user_id = ?", user.Id).Count(&count).Error)
 		assert.Zero(t, count)

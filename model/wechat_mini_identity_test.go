@@ -137,9 +137,17 @@ func TestExpiredMiniAppBindingsAreMarkedThenRetainedForCleanupWindow(t *testing.
 		ExpiresAt:     staleExpiredAt,
 		ExpiredAt:     &staleExpiredAt,
 	}
+	legacyExpired := MiniAppBinding{
+		ID:            "legacy-expired-binding",
+		PendingFlowID: 3,
+		AppID:         "wx-miniapp-a",
+		OpenIDHash:    "9999999999999999999999999999999999999999999999999999999999999999",
+		Status:        MiniAppBindingStatusExpired,
+		ExpiresAt:     staleExpiredAt,
+	}
 	freshPending := MiniAppBinding{
 		ID:            "fresh-pending-binding",
-		PendingFlowID: 3,
+		PendingFlowID: 4,
 		AppID:         "wx-miniapp-a",
 		OpenIDHash:    "1111111111111111111111111111111111111111111111111111111111111111",
 		Status:        MiniAppBindingStatusPending,
@@ -148,7 +156,7 @@ func TestExpiredMiniAppBindingsAreMarkedThenRetainedForCleanupWindow(t *testing.
 	freshBoundUserID := 101
 	freshBound := MiniAppBinding{
 		ID:            "fresh-bound-binding",
-		PendingFlowID: 4,
+		PendingFlowID: 5,
 		AppID:         "wx-miniapp-a",
 		OpenIDHash:    "2222222222222222222222222222222222222222222222222222222222222222",
 		UserID:        &freshBoundUserID,
@@ -156,7 +164,7 @@ func TestExpiredMiniAppBindingsAreMarkedThenRetainedForCleanupWindow(t *testing.
 		ExpiresAt:     now.Add(time.Minute),
 		BoundAt:       &now,
 	}
-	require.NoError(t, DB.Create(&[]MiniAppBinding{expiredPending, staleExpired, freshPending, freshBound}).Error)
+	require.NoError(t, DB.Create(&[]MiniAppBinding{expiredPending, staleExpired, legacyExpired, freshPending, freshBound}).Error)
 
 	require.NoError(t, ExpireAndDeleteMiniAppBindings(now))
 
@@ -166,6 +174,10 @@ func TestExpiredMiniAppBindingsAreMarkedThenRetainedForCleanupWindow(t *testing.
 	require.NotNil(t, marked.ExpiredAt)
 	assert.Equal(t, now, *marked.ExpiredAt)
 	assert.ErrorIs(t, DB.First(&MiniAppBinding{}, "id = ?", staleExpired.ID).Error, gorm.ErrRecordNotFound)
+	var legacyMarked MiniAppBinding
+	require.NoError(t, DB.First(&legacyMarked, "id = ?", legacyExpired.ID).Error)
+	require.NotNil(t, legacyMarked.ExpiredAt)
+	assert.Equal(t, now, *legacyMarked.ExpiredAt)
 
 	var live []MiniAppBinding
 	require.NoError(t, DB.Where("id IN ?", []string{freshPending.ID, freshBound.ID}).Find(&live).Error)
@@ -180,6 +192,7 @@ func TestExpiredMiniAppBindingsAreMarkedThenRetainedForCleanupWindow(t *testing.
 
 	require.NoError(t, ExpireAndDeleteMiniAppBindings(now.Add(AuthFlowDefaultCleanupRetention+time.Minute)))
 	assert.ErrorIs(t, DB.First(&MiniAppBinding{}, "id = ?", expiredPending.ID).Error, gorm.ErrRecordNotFound)
+	assert.ErrorIs(t, DB.First(&MiniAppBinding{}, "id = ?", legacyExpired.ID).Error, gorm.ErrRecordNotFound)
 }
 
 func TestMiniAppBindingConcurrentConfirmationBindsExactlyOnce(t *testing.T) {

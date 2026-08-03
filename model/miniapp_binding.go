@@ -166,12 +166,12 @@ func ExpireAndDeleteMiniAppBindings(now time.Time) error {
 		}).Error; err != nil {
 		return err
 	}
+	if err := DB.Model(&MiniAppBinding{}).
+		Where("status = ? AND expired_at IS NULL", MiniAppBindingStatusExpired).
+		Update("expired_at", now).Error; err != nil {
+		return err
+	}
 	cutoff := now.Add(-AuthFlowDefaultCleanupRetention)
-	return DB.Where(
-		"status = ? AND ((expired_at IS NOT NULL AND expired_at < ?) OR (expired_at IS NULL AND expires_at < ?))",
-		MiniAppBindingStatusExpired,
-		cutoff,
-		cutoff,
-	).
+	return DB.Where("status = ? AND expired_at < ?", MiniAppBindingStatusExpired, cutoff).
 		Delete(&MiniAppBinding{}).Error
 }
