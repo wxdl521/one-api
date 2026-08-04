@@ -153,8 +153,22 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestURL, info.ChannelType), nil
 		}
 
-		if info.RelayMode == relayconstant.RelayModeImagesGenerations && strings.EqualFold(info.UpstreamModelName, "gpt-image-2") {
-			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/openai/v1/images/generations", info.ChannelType), nil
+		if info.RelayMode == relayconstant.RelayModeImagesGenerations || info.RelayMode == relayconstant.RelayModeImagesEdits {
+			imageAPIStyle := strings.TrimSpace(info.ChannelOtherSettings.AzureImageAPIStyle)
+			useFoundryV1 := imageAPIStyle == dto.AzureImageAPIStyleFoundryV1 ||
+				(imageAPIStyle == dto.AzureImageAPIStyleAuto &&
+					info.RelayMode == relayconstant.RelayModeImagesGenerations &&
+					strings.EqualFold(info.UpstreamModelName, "gpt-image-2"))
+			if useFoundryV1 {
+				imagePath := "/openai/v1/images/generations"
+				if info.RelayMode == relayconstant.RelayModeImagesEdits {
+					imagePath = "/openai/v1/images/edits"
+				}
+				if imageAPIStyle == dto.AzureImageAPIStyleFoundryV1 {
+					imagePath = fmt.Sprintf("%s?api-version=%s", imagePath, url.QueryEscape(apiVersion))
+				}
+				return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, imagePath, info.ChannelType), nil
+			}
 		}
 
 		model_ := info.UpstreamModelName

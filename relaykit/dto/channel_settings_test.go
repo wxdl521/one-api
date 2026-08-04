@@ -457,6 +457,11 @@ func TestAdvancedCustomSupportedEndpointTypesForModel(t *testing.T) {
 				UpstreamPath: "/v1/messages",
 			},
 			{
+				IncomingPath: "/v1/images/edits",
+				UpstreamPath: "/v1/images/edits",
+				Models:       []string{"gpt-image-2"},
+			},
+			{
 				IncomingPath: "/custom/endpoint",
 				UpstreamPath: "/custom/endpoint",
 			},
@@ -473,6 +478,10 @@ func TestAdvancedCustomSupportedEndpointTypesForModel(t *testing.T) {
 		types.EndpointTypeOpenAI,
 		types.EndpointTypeAnthropic,
 	}, config.SupportedEndpointTypesForModel("gpt-4o"))
+	assert.Equal(t, []types.EndpointType{
+		types.EndpointTypeAnthropic,
+		types.EndpointTypeImageEdit,
+	}, config.SupportedEndpointTypesForModel("gpt-image-2"))
 	assert.Equal(t, []types.EndpointType{
 		types.EndpointTypeAnthropic,
 	}, config.SupportedEndpointTypesForModel("other-model"))

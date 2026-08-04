@@ -35,6 +35,7 @@ const (
 
 type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string                `json:"azure_responses_version,omitempty"`
+	AzureImageAPIStyle                    string                `json:"azure_image_api_style,omitempty"`
 	VertexKeyType                         VertexKeyType         `json:"vertex_key_type,omitempty"` // "json" or "api_key"
 	VertexProjectID                       string                `json:"vertex_project_id,omitempty"`
 	OpenRouterEnterprise                  *bool                 `json:"openrouter_enterprise,omitempty"`
@@ -56,6 +57,12 @@ type ChannelOtherSettings struct {
 	AgentPlanUsageEnabled                 bool                  `json:"agent_plan_usage_enabled,omitempty"`
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
 }
+
+const (
+	AzureImageAPIStyleAuto       = ""
+	AzureImageAPIStyleDeployment = "deployment"
+	AzureImageAPIStyleFoundryV1  = "foundry-v1"
+)
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {
 	if s == nil || s.OpenRouterEnterprise == nil {
@@ -111,6 +118,7 @@ const (
 	advancedCustomEndpointPathClaudeMessages         = "/v1/messages"
 	advancedCustomEndpointPathJinaRerank             = "/v1/rerank"
 	advancedCustomEndpointPathImageGeneration        = "/v1/images/generations"
+	advancedCustomEndpointPathImageEdit              = "/v1/images/edits"
 	advancedCustomEndpointPathEmbeddings             = "/v1/embeddings"
 )
 
@@ -212,6 +220,8 @@ func advancedCustomEndpointTypeFromIncomingPath(incomingPath string) (types.Endp
 		return types.EndpointTypeJinaRerank, true
 	case advancedCustomEndpointPathImageGeneration:
 		return types.EndpointTypeImageGeneration, true
+	case advancedCustomEndpointPathImageEdit:
+		return types.EndpointTypeImageEdit, true
 	case advancedCustomEndpointPathEmbeddings:
 		return types.EndpointTypeEmbeddings, true
 	default:

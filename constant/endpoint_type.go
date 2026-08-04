@@ -14,6 +14,7 @@ const (
 	EndpointTypeGemini                = types.EndpointTypeGemini
 	EndpointTypeJinaRerank            = types.EndpointTypeJinaRerank
 	EndpointTypeImageGeneration       = types.EndpointTypeImageGeneration
+	EndpointTypeImageEdit             = types.EndpointTypeImageEdit
 	EndpointTypeEmbeddings            = types.EndpointTypeEmbeddings
 	EndpointTypeOpenAIVideo           = types.EndpointTypeOpenAIVideo
 )

@@ -13,6 +13,7 @@ const (
 	EndpointTypeGemini                EndpointType = "gemini"
 	EndpointTypeJinaRerank            EndpointType = "jina-rerank"
 	EndpointTypeImageGeneration       EndpointType = "image-generation"
+	EndpointTypeImageEdit             EndpointType = "image-edit"
 	EndpointTypeEmbeddings            EndpointType = "embeddings"
 	EndpointTypeOpenAIVideo           EndpointType = "openai-video"
 )

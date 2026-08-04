@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -208,6 +209,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			relayFormat = types.RelayFormatRerank
 		case constant.EndpointTypeImageGeneration:
 			relayFormat = types.RelayFormatOpenAIImage
+		case constant.EndpointTypeImageEdit:
+			relayFormat = types.RelayFormatOpenAIImage
 		case constant.EndpointTypeEmbeddings:
 			relayFormat = types.RelayFormatEmbedding
 		default:
@@ -220,6 +223,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			relayFormat = types.RelayFormatEmbedding
 		}
 		if c.Request.URL.Path == "/v1/images/generations" {
+			relayFormat = types.RelayFormatOpenAIImage
+		}
+		if c.Request.URL.Path == "/v1/images/edits" {
 			relayFormat = types.RelayFormatOpenAIImage
 		}
 		if c.Request.URL.Path == "/v1/messages" {
@@ -240,6 +246,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
+	if constant.EndpointType(endpointType) == constant.EndpointTypeImageEdit {
+		if err := prepareImageEditTestRequest(c, testModel); err != nil {
+			return testResult{localErr: err, theOneError: types.NewError(err, types.ErrorCodeJsonMarshalFailed)}
+		}
+	}
 
 	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -398,13 +409,38 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			theOneError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
 		}
 	}
-	jsonData, err := common.Marshal(convertedRequest)
-	if err != nil {
-		return testResult{
-			context:     c,
-			localErr:    err,
-			theOneError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+	var requestBody io.Reader
+	if convertedReader, ok := convertedRequest.(io.Reader); ok {
+		requestBody = convertedReader
+	} else {
+		jsonData, marshalErr := common.Marshal(convertedRequest)
+		if marshalErr != nil {
+			return testResult{
+				context:     c,
+				localErr:    marshalErr,
+				theOneError: types.NewError(marshalErr, types.ErrorCodeJsonMarshalFailed),
+			}
 		}
+
+		if len(info.ParamOverride) > 0 {
+			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
+			if err != nil {
+				if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
+					return testResult{
+						context:     c,
+						localErr:    fixedErr,
+						theOneError: relaycommon.TheOneErrorFromParamOverride(fixedErr),
+					}
+				}
+				return testResult{
+					context:     c,
+					localErr:    err,
+					theOneError: types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid),
+				}
+			}
+		}
+		requestBody = bytes.NewBuffer(jsonData)
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
 	}
 
 	//jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings)
@@ -416,26 +452,6 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	//	}
 	//}
 
-	if len(info.ParamOverride) > 0 {
-		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
-		if err != nil {
-			if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
-				return testResult{
-					context:     c,
-					localErr:    fixedErr,
-					theOneError: relaycommon.TheOneErrorFromParamOverride(fixedErr),
-				}
-			}
-			return testResult{
-				context:     c,
-				localErr:    err,
-				theOneError: types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid),
-			}
-		}
-	}
-
-	requestBody := bytes.NewBuffer(jsonData)
-	c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return testResult{
@@ -536,6 +552,46 @@ func attachTestBillingRequestInput(info *relaycommon.RelayInfo, request dto.Requ
 		return err
 	}
 	info.BillingRequestInput = &input
+	return nil
+}
+
+func prepareImageEditTestRequest(c *gin.Context, model string) error {
+	if c == nil || c.Request == nil {
+		return errors.New("image edit test request context is unavailable")
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", model); err != nil {
+		return err
+	}
+	if err := writer.WriteField("prompt", "preserve the subject and create a clean variation"); err != nil {
+		return err
+	}
+	imagePart, err := writer.CreateFormFile("image", "channel-test.png")
+	if err != nil {
+		return err
+	}
+	// A minimal valid 1×1 PNG keeps this controlled channel test small while
+	// exercising the real multipart image-edit route.
+	if _, err = imagePart.Write([]byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
+		0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+		0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+		0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+	}); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	c.Request.Body = io.NopCloser(bytes.NewReader(body.Bytes()))
 	return nil
 }
 
@@ -717,6 +773,13 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			return &dto.ImageRequest{
 				Model:  model,
 				Prompt: "a cute cat",
+				N:      lo.ToPtr(uint(1)),
+				Size:   "1024x1024",
+			}
+		case constant.EndpointTypeImageEdit:
+			return &dto.ImageRequest{
+				Model:  model,
+				Prompt: "preserve the subject and create a clean variation",
 				N:      lo.ToPtr(uint(1)),
 				Size:   "1024x1024",
 			}
