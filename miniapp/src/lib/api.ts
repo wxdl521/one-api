@@ -18,6 +18,7 @@ export interface ApiRequestOptions<TData = unknown> {
   method: ApiMethod
   data?: TData
   auth?: RequestAuth
+  timeout?: number
 }
 
 export class MiniAppApiError extends Error {
@@ -35,6 +36,7 @@ export class MiniAppApiError extends Error {
 }
 
 const requestTimeout = 10_000
+const maximumRequestTimeout = 20_000
 const miniAppApiPath = '/api/miniapp/v1'
 
 function getBaseUrl(): string {
@@ -111,6 +113,10 @@ export async function request<TResponse, TData = unknown>(
   options: ApiRequestOptions<TData>,
 ): Promise<TResponse> {
   const url = getRequestUrl(options.path)
+  const timeout = options.timeout ?? requestTimeout
+  if (!Number.isSafeInteger(timeout) || timeout <= 0 || timeout > maximumRequestTimeout) {
+    throw new MiniAppApiError('MINIAPP_CONFIG_ERROR', 'Mini Program API timeout is invalid')
+  }
   const requestId = getRequestId()
   const header: Record<string, string> = {
     'content-type': 'application/json',
@@ -139,7 +145,7 @@ export async function request<TResponse, TData = unknown>(
         method: options.method,
         data: options.data,
         header,
-        timeout: requestTimeout,
+        timeout,
       })
       const responseRequestId = getHeaderValue(response.header, 'x-oneapi-request-id') ?? requestId
       const envelope = asEnvelope(response.data)
