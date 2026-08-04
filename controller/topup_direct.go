@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/the-one/model"
 	"github.com/QuantumNous/the-one/service"
 	"github.com/QuantumNous/the-one/setting"
-	"github.com/QuantumNous/the-one/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
@@ -70,12 +69,6 @@ func directPaymentAmountCents(amount int64, group string) (int64, float64, error
 	return cents, float64(cents) / 100, nil
 }
 
-func normalizeOfficialTopUpAmount(amount int64) int64 {
-	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
-		return amount
-	}
-	return decimal.NewFromInt(amount).Div(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
-}
 
 func createOfficialTopUp(c *gin.Context, provider, method string, amount int64) (*model.TopUp, error) {
 	if amount < getMinTopup() {
@@ -90,7 +83,7 @@ func createOfficialTopUp(c *gin.Context, provider, method string, amount int64) 
 	if err != nil {
 		return nil, err
 	}
-	normalizedAmount := normalizeOfficialTopUpAmount(amount)
+	normalizedAmount := normalizeTopUpUnits(amount)
 	quota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromInt(normalizedAmount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
 	if clamp != nil || quota <= 0 {
 		return nil, errors.New("invalid topup amount")

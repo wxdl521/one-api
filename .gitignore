@@ -11,6 +11,9 @@ logs
 web/dist
 web/node_modules
 .env
+.env.*
+!.env.example
+docker-compose.prod.yml
 one-api
 the-one
 /__debug_bin*
@@ -20,7 +23,7 @@ tiktoken_cache
 .gocache
 .gomodcache/
 .cache
-plans
+/plans
 .claude
 .cursor
 

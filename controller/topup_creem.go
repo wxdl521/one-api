@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/QuantumNous/the-one/common"
@@ -76,7 +75,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 
 	// 解析产品列表
 	var products []CreemProduct
-	err := json.Unmarshal([]byte(setting.CreemProducts), &products)
+	err := common.Unmarshal([]byte(setting.CreemProducts), &products)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品配置解析失败 user_id=%d error=%q", c.GetInt("id"), err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品配置错误"})
@@ -97,8 +96,21 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		return
 	}
 
+	// product.Quota 直接作为入账额度（不乘 QuotaPerUnit）。超过 int32 配额列上界的
+	// 订单会在 webhook 结算与手动补单双双被拒——钱已被 Creem 扣走、订单永久卡
+	// Pending。与 Stripe 的 settlementQuotaOverflows 同口径，在拉起支付前拒掉误配产品。
+	if selectedProduct.Quota <= 0 || selectedProduct.Quota >= int64(common.MaxQuota) {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品额度配置越界 user_id=%d product_id=%s quota=%d", c.GetInt("id"), selectedProduct.ProductId, selectedProduct.Quota))
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品配置错误"})
+		return
+	}
+
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, err := model.GetUserById(id, false)
+	if err != nil || user == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "用户不存在"})
+		return
+	}
 
 	// 生成唯一的订单引用ID
 	reference := fmt.Sprintf("creem-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
@@ -241,9 +253,9 @@ func CreemWebhook(c *gin.Context) {
 		return
 	}
 
-	// 获取签名头
+	// 获取签名头；验签前不落全量 body/签名，避免未验证内容进 INFO 日志
 	signature := c.GetHeader(CreemSignatureHeader)
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.Request.RequestURI, c.ClientIP(), signature, string(bodyBytes)))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem webhook 收到请求 path=%q client_ip=%s body_len=%d", c.Request.RequestURI, c.ClientIP(), len(bodyBytes)))
 	if signature == "" {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Creem webhook 缺少签名 path=%q client_ip=%s body=%q", c.Request.RequestURI, c.ClientIP(), string(bodyBytes)))
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -258,6 +270,7 @@ func CreemWebhook(c *gin.Context) {
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem webhook 验签成功 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
+	logger.LogDebug(c.Request.Context(), fmt.Sprintf("Creem webhook 验签通过 body=%q", string(bodyBytes)))
 
 	// 重新设置body供后续的ShouldBindJSON使用
 	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -335,6 +348,11 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 		return
 	}
 
+	// 金额比对回退到上游默认（无离线比对）：Creem 是 hosted checkout，金额在建 session 时
+	// 由服务端锁定、webhook 已验签，那才是真正的安全边界。此前加的 amount_paid/sub_total 比对
+	// 两侧都有回归：折扣订单 sub_total=原价会按原价放行全额配额（欠费），零小数币种(JPY)或
+	// 本地/Creem 币种不一致时又会误拒合法支付、订单永挂。currency 已在上方“支付完成回调”
+	// 日志留痕，供对账。
 	// 处理充值，传入客户邮箱和姓名信息
 	customerEmail := event.Object.Customer.Email
 	customerName := event.Object.Customer.Name
@@ -402,7 +420,7 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 	}
 
 	// 序列化请求数据
-	jsonData, err := json.Marshal(requestData)
+	jsonData, err := common.Marshal(requestData)
 	if err != nil {
 		return "", fmt.Errorf("序列化请求数据失败: %v", err)
 	}
@@ -443,7 +461,7 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 	}
 	// 解析响应
 	var checkoutResp CreemCheckoutResponse
-	err = json.Unmarshal(body, &checkoutResp)
+	err = common.Unmarshal(body, &checkoutResp)
 	if err != nil {
 		return "", fmt.Errorf("解析响应失败: %v", err)
 	}

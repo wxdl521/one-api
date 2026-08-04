@@ -55,6 +55,19 @@ var (
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
 )
 
+// amountToQuotaChecked converts a topup amount into an integer quota by
+// multiplying QuotaPerUnit, then rejects saturation clamps and non-positive
+// results. Callers pass the amount decimal from their own source (Stripe uses
+// Money in dollars, other providers use Amount as a unit count). Centralizes
+// the convert + clamp-audit + reject invariant shared by every settle path.
+func amountToQuotaChecked(amount decimal.Decimal) (int, error) {
+	quota, clamp := common.QuotaFromDecimalChecked(amount.Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	if clamp != nil || quota <= 0 {
+		return 0, errors.New("无效的充值额度")
+	}
+	return quota, nil
+}
+
 func (topUp *TopUp) Insert() error {
 	var err error
 	err = DB.Create(topUp).Error
@@ -119,7 +132,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("未提供支付单号")
 	}
 
-	var quota float64
+	var quota int
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -148,7 +161,11 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return err
 		}
 
-		quota = topUp.Money * common.QuotaPerUnit
+		var qErr error
+		quota, qErr = amountToQuotaChecked(decimal.NewFromFloat(topUp.Money))
+		if qErr != nil {
+			return qErr
+		}
 		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
 		if err != nil {
 			return err
@@ -162,7 +179,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quota), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
 
 	return nil
 }
@@ -357,18 +374,25 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 计算应充值额度：
-		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
-		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
-		if topUp.PaymentProvider == PaymentProviderStripe {
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
-		} else {
-			dAmount := decimal.NewFromInt(topUp.Amount)
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量
+		// - Creem 订单：Amount 已是充值额度（quota），直接入账，与 RechargeCreem 一致，不再乘 QuotaPerUnit
+		// - 其他订单（如易支付）：Amount 为美元数量
+		var qErr error
+		switch topUp.PaymentProvider {
+		case PaymentProviderStripe:
+			quotaToAdd, qErr = amountToQuotaChecked(decimal.NewFromFloat(topUp.Money))
+		case PaymentProviderCreem:
+			quota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromInt(topUp.Amount))
+			if clamp != nil || quota <= 0 {
+				qErr = errors.New("无效的充值额度")
+			} else {
+				quotaToAdd = quota
+			}
+		default:
+			quotaToAdd, qErr = amountToQuotaChecked(decimal.NewFromInt(topUp.Amount))
 		}
-		if quotaToAdd <= 0 {
-			return errors.New("无效的充值额度")
+		if qErr != nil {
+			return qErr
 		}
 
 		// 标记完成
@@ -431,8 +455,13 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return err
 		}
 
-		// Creem 直接使用 Amount 作为充值额度（整数）
-		quota = topUp.Amount
+		// Creem 直接使用 Amount 作为充值额度，但仍需经 int32 配额列校验，防止管理员误配
+		// product.Quota 超上界导致回绕/结算失败（与 ManualCompleteTopUp 的 Creem 分支同口径）。
+		checkedQuota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromInt(topUp.Amount))
+		if clamp != nil || checkedQuota <= 0 {
+			return errors.New("无效的充值额度")
+		}
+		quota = int64(checkedQuota)
 
 		// 构建更新字段，优先使用邮箱，如果邮箱为空则使用用户名
 		updateFields := map[string]interface{}{
@@ -503,11 +532,10 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		dAmount := decimal.NewFromInt(topUp.Amount)
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
-		if quotaToAdd <= 0 {
-			return errors.New("无效的充值额度")
+		var qErr error
+		quotaToAdd, qErr = amountToQuotaChecked(decimal.NewFromInt(topUp.Amount))
+		if qErr != nil {
+			return qErr
 		}
 
 		topUp.CompleteTime = common.GetTimestamp()
@@ -566,9 +594,10 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd = int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
-		if quotaToAdd <= 0 {
-			return errors.New("无效的充值额度")
+		var qErr error
+		quotaToAdd, qErr = amountToQuotaChecked(decimal.NewFromInt(topUp.Amount))
+		if qErr != nil {
+			return qErr
 		}
 
 		topUp.CompleteTime = common.GetTimestamp()
@@ -637,11 +666,9 @@ func RechargeEpay(tradeNo string, paymentMethod string, paidAmount string, calle
 			return ErrPaymentAmountMismatch
 		}
 
-		calculatedQuota, clamp := common.QuotaFromDecimalChecked(
-			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-		)
-		if clamp != nil || calculatedQuota <= 0 {
-			return errors.New("无效的充值额度")
+		calculatedQuota, qErr := amountToQuotaChecked(decimal.NewFromInt(topUp.Amount))
+		if qErr != nil {
+			return qErr
 		}
 
 		if paymentMethod != "" {

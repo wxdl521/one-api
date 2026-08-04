@@ -225,6 +225,13 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
 		return
 	}
+	// Settlement (RechargeEpay) credits the normalized amount via
+	// amountToQuotaChecked, so bound it here before the payment is captured;
+	// otherwise an oversized amount is charged and then rejected at settlement.
+	if normalizeTopUpUnits(req.Amount) > topupUnitCap() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能大于 %d", topupUnitCap())})
+		return
+	}
 
 	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
@@ -267,12 +274,7 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
-	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dAmount := decimal.NewFromInt(int64(amount))
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		amount = dAmount.Div(dQuotaPerUnit).IntPart()
-	}
+	amount := normalizeTopUpUnits(req.Amount)
 	topUp := &model.TopUp{
 		UserId:          id,
 		Amount:          amount,

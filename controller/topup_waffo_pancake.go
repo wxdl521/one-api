@@ -75,14 +75,8 @@ func getWaffoPancakePayMoney(amount int64, group string) float64 {
 }
 
 func normalizeWaffoPancakeTopUpAmount(amount int64) int64 {
-	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
-		return amount
-	}
-
-	normalized := decimal.NewFromInt(amount).
-		Div(decimal.NewFromFloat(common.QuotaPerUnit)).
-		IntPart()
-	if normalized < 1 {
+	normalized := normalizeTopUpUnits(amount)
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens && normalized < 1 {
 		return 1
 	}
 	return normalized
@@ -349,6 +343,13 @@ func RequestWaffoPancakePay(c *gin.Context) {
 	}
 	if req.Amount < int64(setting.WaffoPancakeMinTopUp) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
+		return
+	}
+	// Settlement (RechargeWaffoPancake) credits the normalized amount via
+	// amountToQuotaChecked, so bound it here before the payment is captured;
+	// otherwise an oversized amount is charged and then rejected at settlement.
+	if normalizeWaffoPancakeTopUpAmount(req.Amount) > topupUnitCap() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能大于 %d", topupUnitCap())})
 		return
 	}
 

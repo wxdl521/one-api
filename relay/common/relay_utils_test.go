@@ -112,8 +112,26 @@ func TestTaskDurationBounds(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "normal duration is accepted",
+			name: "normal seconds is accepted",
 			body: `{"model":"sora-2","prompt":"a cat","seconds":"8"}`,
+		},
+		{
+			name: "matching small seconds and duration are accepted",
+			body: `{"model":"sora-2","prompt":"a cat","seconds":"5","duration":5}`,
+		},
+		{
+			name:    "oversized seconds string cannot hide behind valid duration",
+			body:    `{"model":"sora-2","prompt":"a cat","duration":4,"seconds":"9999999999"}`,
+			wantErr: true,
+		},
+		{
+			// Adaptors (hailuo, vidu, kling, ali, jimeng) read req.Duration
+			// directly for the upstream request and billing, so an oversized
+			// duration must be rejected even when a small seconds value would win
+			// resolution.
+			name:    "oversized duration cannot hide behind valid seconds",
+			body:    `{"model":"sora-2","prompt":"a cat","seconds":"5","duration":999999}`,
+			wantErr: true,
 		},
 	}
 

@@ -1,7 +1,6 @@
 package jimeng
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"github.com/QuantumNous/the-one/relaykit/dto"
 	"github.com/QuantumNous/the-one/relaykit/types"
 
+	"github.com/QuantumNous/the-one/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -79,7 +79,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 
 	if len(request.ExtraFields) > 0 {
-		if err := json.Unmarshal(request.ExtraFields, &payload); err != nil {
+		if err := common.Unmarshal(request.ExtraFields, &payload); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal extra fields: %w", err)
 		}
 	}

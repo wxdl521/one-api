@@ -58,6 +58,10 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 			sfRequest.BatchSize = lo.FromPtr(request.N)
 		}
 	}
+	// batch_size 经 Extra 透传，绕开标准 n 的 MaxImageN 校验；本地按同一上界拒绝，防计费乘数越界
+	if sfRequest.BatchSize > dto.MaxImageN {
+		return nil, fmt.Errorf("batch_size must be an integer between 1 and %d", dto.MaxImageN)
+	}
 
 	return sfRequest, nil
 }

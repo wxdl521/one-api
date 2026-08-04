@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/the-one/setting"
 	"github.com/QuantumNous/the-one/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 	waffo "github.com/waffo-com/waffo-go"
 	"github.com/waffo-com/waffo-go/config"
@@ -153,8 +154,15 @@ func RequestWaffoPay(c *gin.Context) {
 		return
 	}
 	waffoMinTopup := int64(setting.WaffoMinTopUp)
-	if req.Amount < waffoMinTopup {
+	// Token 显示模式下 req.Amount 是 token 数，需先归一化为等价美元数量再做上下界校验，
+	// 否则合法的 token 数会被 maxTopupAmount（美元口径）上界误拒，token 模式充值全废。
+	normalizedAmount := normalizeTopUpUnits(req.Amount)
+	if normalizedAmount < waffoMinTopup {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", waffoMinTopup)})
+		return
+	}
+	if normalizedAmount > topupUnitCap() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能大于 %d", topupUnitCap())})
 		return
 	}
 
@@ -208,13 +216,11 @@ func RequestWaffoPay(c *gin.Context) {
 	merchantOrderId := fmt.Sprintf("WAFFO-%d-%d-%s", id, time.Now().UnixMilli(), randstr.String(6))
 	paymentRequestId := merchantOrderId
 
-	// Token 模式下归一化 Amount（存等价美元/CNY 数量，避免 RechargeWaffo 双重放大）
-	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		amount = int64(float64(req.Amount) / common.QuotaPerUnit)
-		if amount < 1 {
-			amount = 1
-		}
+	// 复用上方归一化后的等价美元/CNY 数量，避免 RechargeWaffo 双重放大；
+	// token 模式下 min-1 兜底避免存 0。
+	amount := normalizedAmount
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens && amount < 1 {
+		amount = 1
 	}
 
 	// 创建本地订单
@@ -354,7 +360,8 @@ func WaffoWebhook(c *gin.Context) {
 	wh := sdk.Webhook()
 	bodyStr := string(bodyBytes)
 	signature := c.GetHeader("X-SIGNATURE")
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.Request.RequestURI, c.ClientIP(), signature, bodyStr))
+	// 验签前不落全量 body/签名，避免未验证内容进 INFO 日志
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo webhook 收到请求 path=%q client_ip=%s body_len=%d", c.Request.RequestURI, c.ClientIP(), len(bodyBytes)))
 
 	// 验证请求签名
 	if !wh.VerifySignature(bodyStr, signature) {
@@ -362,6 +369,7 @@ func WaffoWebhook(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+	logger.LogDebug(c.Request.Context(), fmt.Sprintf("Waffo webhook 验签通过 body=%q", bodyStr))
 
 	var event core.WebhookEvent
 	if err := common.Unmarshal(bodyBytes, &event); err != nil {
@@ -407,6 +415,24 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 
 	LockOrder(merchantOrderId)
 	defer UnlockOrder(merchantOrderId)
+
+	// 实付金额与本地订单严格比对：orderAmount 应与下单时发送的格式化金额一致，
+	// 签名有效但金额不符的回调拒绝入账。订单不存在/非 pending 交由 RechargeWaffo 处理。
+	if topUp := model.GetTopUpByTradeNo(merchantOrderId); topUp != nil && topUp.Status == common.TopUpStatusPending {
+		if result.OrderAmount == "" {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo 回调未携带 orderAmount，跳过金额比对 trade_no=%s", merchantOrderId))
+		} else {
+			actualAmount, aerr := decimal.NewFromString(result.OrderAmount)
+			// 期望金额以下单时使用的服务端币种格式化，不采信回调携带的 OrderCurrency，
+			// 否则攻击者可用零/非零小数币种差异绕过金额比对。
+			expectedAmount, eerr := decimal.NewFromString(formatWaffoAmount(topUp.Money, getWaffoCurrency()))
+			if aerr != nil || eerr != nil || !actualAmount.Equal(expectedAmount) {
+				common.SysError(fmt.Sprintf("waffo webhook amount mismatch trade_no=%s order_amount=%q order_currency=%s expected_currency=%s expected_money=%.2f", merchantOrderId, result.OrderAmount, result.OrderCurrency, getWaffoCurrency(), topUp.Money))
+				sendWaffoWebhookResponse(c, wh, false, "amount mismatch")
+				return
+			}
+		}
+	}
 
 	if err := model.RechargeWaffo(merchantOrderId, c.ClientIP()); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo 充值处理失败 trade_no=%s client_ip=%s error=%q", merchantOrderId, c.ClientIP(), err.Error()))

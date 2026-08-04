@@ -17,13 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { RatioType } from '../types'
-import {
-  MODELS_DEV_PRESET_ID,
-  MODELS_DEV_PRESET_NAME,
-  OFFICIAL_CHANNEL_ID,
-  OFFICIAL_CHANNEL_NAME,
-  RATIO_TYPE_OPTIONS,
-} from './constants'
+import { RATIO_TYPE_OPTIONS, SYNTHESIZED_PRESETS } from './constants'
 
 export type RatioDifferenceEntry = {
   current: number | string | null
@@ -164,15 +158,13 @@ export function isSelectableUpstreamValue(
   return value !== null && value !== undefined && value !== 'same'
 }
 
-export function getUpstreamDisplayName(sourceName: string): string {
-  const synthesizedPresets = [
-    { name: OFFICIAL_CHANNEL_NAME, id: OFFICIAL_CHANNEL_ID },
-    { name: MODELS_DEV_PRESET_NAME, id: MODELS_DEV_PRESET_ID },
-  ]
-
-  for (const preset of synthesizedPresets) {
+export function getUpstreamDisplayName(
+  sourceName: string,
+  t: (key: string) => string
+): string {
+  for (const preset of SYNTHESIZED_PRESETS) {
     if (sourceName === `${preset.name}(${preset.id})`) {
-      return preset.name
+      return t(preset.label)
     }
   }
 

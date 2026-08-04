@@ -179,7 +179,7 @@ export function UpstreamRatioSyncTable({
         ).length
 
         states[upstreamName] = {
-          displayName: getUpstreamDisplayName(upstreamName),
+          displayName: getUpstreamDisplayName(upstreamName, t),
           selections: effectiveSelections,
           removalPlan,
           selectableCount: effectiveSelections.length,
@@ -189,7 +189,14 @@ export function UpstreamRatioSyncTable({
       },
       {}
     )
-  }, [differences, filteredData, ratioTypeFilter, resolutions, upstreamNames])
+  }, [
+    differences,
+    filteredData,
+    ratioTypeFilter,
+    resolutions,
+    t,
+    upstreamNames,
+  ])
 
   const handleBulkSelect = useCallback(
     (upstream: string) => {

@@ -68,7 +68,7 @@ export function PaymentMethodsVisualEditor({
       name: t('Epay Alipay'),
       template: {
         icon: getDefaultIconName('alipay'),
-        name: '支付宝',
+        name: t('Alipay'),
         type: 'alipay',
       },
     },
@@ -76,7 +76,7 @@ export function PaymentMethodsVisualEditor({
       name: t('Epay WeChat Pay'),
       template: {
         icon: getDefaultIconName('wxpay'),
-        name: '微信',
+        name: t('WeChat'),
         type: 'wxpay',
       },
     },
@@ -102,7 +102,7 @@ export function PaymentMethodsVisualEditor({
       template: {
         icon: 'LuCreditCard',
         min_topup: '50',
-        name: '自定义1',
+        name: t('Custom 1'),
         type: 'custom1',
       },
     },
