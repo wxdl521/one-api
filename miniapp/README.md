@@ -1,6 +1,6 @@
 # WeChat Mini Program (phase one)
 
-This is a standalone Taro 4 workspace for the WeChat Mini Program. It is not part of the browser `web/` application and does not share its React 19 dependencies. The phase-one shell makes no network requests. Future requests must target `/api/miniapp/v1` only.
+This is a standalone Taro 4 workspace for the WeChat Mini Program. It is not part of the browser `web/` application and does not share its React 19 dependencies. Its application requests target only the Mini Program BFF at `/api/miniapp/v1`; the client obtains a one-time WeChat login code with `Taro.login`, then the BFF performs the server-side WeChat identity exchange.
 
 ## Install and verify
 
