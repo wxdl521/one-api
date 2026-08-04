@@ -268,8 +268,42 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	for k, v := range values {
-		if err := updateOptionMap(k, v); err != nil {
+	return updateOptionMapsBulk(values)
+}
+
+func updateOptionMapsBulk(values map[string]string) error {
+	configValues := registeredConfigUpdates(values)
+	handledConfigKeys := make(map[string]struct{})
+	for configName, updates := range configValues {
+		for configKey := range updates {
+			handledConfigKeys[configName+"."+configKey] = struct{}{}
+		}
+	}
+
+	if len(configValues) > 0 {
+		common.OptionMapRWMutex.Lock()
+		for configName, updates := range configValues {
+			cfg := config.GlobalConfig.Get(configName)
+			if cfg == nil {
+				continue
+			}
+			if err := config.UpdateConfigFromMap(cfg, updates); err != nil {
+				common.OptionMapRWMutex.Unlock()
+				return err
+			}
+			handleConfigUpdatePostProcessing(configName)
+		}
+		for key := range handledConfigKeys {
+			common.OptionMap[key] = values[key]
+		}
+		common.OptionMapRWMutex.Unlock()
+	}
+
+	for key, value := range values {
+		if _, handled := handledConfigKeys[key]; handled {
+			continue
+		}
+		if err := updateOptionMap(key, value); err != nil {
 			return err
 		}
 	}
@@ -658,6 +692,12 @@ func handleConfigUpdate(key, value string) (bool, error) {
 		return true, err
 	}
 
+	handleConfigUpdatePostProcessing(configName)
+
+	return true, nil // 已处理
+}
+
+func handleConfigUpdatePostProcessing(configName string) {
 	// 特定配置的后处理
 	if configName == "performance_setting" {
 		performance_setting.UpdateAndSync()
@@ -667,11 +707,18 @@ func handleConfigUpdate(key, value string) (bool, error) {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
 	}
-
-	return true, nil // 已处理
 }
 
 func validateRegisteredConfigUpdates(values map[string]string) error {
+	for configName, updates := range registeredConfigUpdates(values) {
+		if err := config.GlobalConfig.ValidateConfigUpdate(configName, updates); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func registeredConfigUpdates(values map[string]string) map[string]map[string]string {
 	configValues := make(map[string]map[string]string)
 	for key, value := range values {
 		parts := strings.SplitN(key, ".", 2)
@@ -683,12 +730,7 @@ func validateRegisteredConfigUpdates(values map[string]string) error {
 		}
 		configValues[parts[0]][parts[1]] = value
 	}
-	for configName, updates := range configValues {
-		if err := config.GlobalConfig.ValidateConfigUpdate(configName, updates); err != nil {
-			return err
-		}
-	}
-	return nil
+	return configValues
 }
 
 func volcAssetConfig2JSONString() string {
