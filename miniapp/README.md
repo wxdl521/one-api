@@ -7,7 +7,7 @@ This is a standalone Taro 4 workspace for the WeChat Mini Program. It is not par
 Run these commands from this directory:
 
 ```powershell
-bun install
+bun install --frozen-lockfile
 bun run dev:weapp
 bun run build:weapp
 bun run typecheck
@@ -24,13 +24,13 @@ The pinned `@tarojs/webpack5-runner` development dependency is required by Taro'
 1. Run `bun run dev:weapp`.
 2. In WeChat Developer Tools, choose **Import Project**.
 3. Select this `miniapp/` directory, not the browser `web/` directory. Its `project.config.json` points Developer Tools at `dist/`.
-4. Use the tourist project for local shell work, or select the approved AppID in Developer Tools or CI for real integration work.
+4. Use the tourist project for local shell work, or select the approved AppID in Developer Tools or the protected release process for real integration work.
 
-The tracked project configuration deliberately uses `touristappid`. A real AppID is selected in Developer Tools or injected by CI; it must not be committed to client source.
+The tracked project configuration deliberately uses `touristappid`. A real AppID is selected in Developer Tools or the protected release process; it must not be committed to client source.
 
 ## Development base URL
 
-`config/index.ts` reads `TARO_APP_API_BASE_URL` and `TARO_APP_MINIAPP_BINDING_ORIGIN` while compiling. They become the public `__MINIAPP_API_BASE_URL__` and `__MINIAPP_BINDING_ORIGIN__` constants. No URL is committed. Runtime API calls target only `/api/miniapp/v1`, require an HTTPS base URL, and fail closed when the compiled value is missing or invalid. Browser account binding additionally accepts only the configured HTTPS origin's exact `/miniapp-bind` page.
+`config/index.ts` reads `TARO_APP_API_BASE_URL` and `TARO_APP_MINIAPP_BINDING_ORIGIN` while compiling. They become the public `__MINIAPP_API_BASE_URL__` and `__MINIAPP_BINDING_ORIGIN__` constants. `miniapp/.env.example` contains non-deployment placeholders only; replace them for the intended environment and never place secrets in a Mini Program environment file. Runtime API calls target only `/api/miniapp/v1`, require an HTTPS base URL, and fail closed when the compiled value is missing or invalid. Browser account binding additionally accepts only the configured HTTPS origin's exact `/miniapp-bind` page.
 
 For PowerShell, switch a local development build with:
 
@@ -48,12 +48,16 @@ Remove-Item Env:TARO_APP_MINIAPP_BINDING_ORIGIN
 bun run dev:weapp
 ```
 
-## Server token policy
+## Server model policy
 
-The gateway must configure `MINIAPP_ALLOWED_MODELS` before it enables Mini Program token creation. It is a comma-separated, exact model-name allowlist such as `gpt-mini,gpt-4.1-mini`. The default is empty and denies every model. A requested model must be present in this allowlist and remain enabled for the user's selected group; setting this variable never bypasses group availability checks.
+The gateway must configure `MINIAPP_ALLOWED_MODELS` before it enables Mini Program token creation or text tests. It is a comma-separated, exact model-name allowlist such as `gpt-mini,gpt-4.1-mini`. The default is empty and denies every model. A requested model must be present in this allowlist and remain enabled for the user's selected group; setting this variable never bypasses group availability checks.
 
 ## HTTPS and real-device testing
 
 Before adding or exercising API calls on a real device, configure the selected AppID's **request legal domain** in the WeChat Mini Program administration console. The domain must use publicly trusted HTTPS and satisfy WeChat's current domain, certificate, and TLS requirements. Developer Tools can relax domain checks only for local development; that does not make a domain valid for a real device.
 
-For a device test, choose the approved real AppID in Developer Tools or CI, build the Mini Program, generate a preview, and open it from WeChat on a physical device. Verify the device can reach the HTTPS gateway over its real network and that the configured request domain is accepted before testing authentication or any future `/api/miniapp/v1` endpoint.
+For a device test, choose the approved real AppID in Developer Tools or the protected release process, build the Mini Program, generate a preview, and open it from WeChat on a physical device. Verify the device can reach the HTTPS gateway over its real network and that the configured request domain is accepted before testing authentication or any future `/api/miniapp/v1` endpoint.
+
+## Privacy and release requirements
+
+Use the [privacy inventory and release checklist](../docs/miniapp-release-checklist.md) before sharing an experience build or enabling a Mini Program feature flag. It covers public build configuration, server-only secret boundaries, developer verification, WeChat console checks, safe operational correlation, and rollback.
