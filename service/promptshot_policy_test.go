@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/QuantumNous/the-one/setting/system_setting"
@@ -17,12 +18,13 @@ type promptShotCapabilityCall struct {
 type promptShotCapabilityResolverStub struct {
 	available map[promptShotCapabilityCall]bool
 	calls     []promptShotCapabilityCall
+	err       error
 }
 
 func (s *promptShotCapabilityResolverStub) IsAvailable(group, model, requestPath string, channelID int) (bool, error) {
 	call := promptShotCapabilityCall{group: group, model: model, path: requestPath, channelID: channelID}
 	s.calls = append(s.calls, call)
-	return s.available[call], nil
+	return s.available[call], s.err
 }
 
 func TestSelectPromptShotModelHonorsConfiguredCandidateOrder(t *testing.T) {
@@ -65,6 +67,46 @@ func TestSelectPromptShotModelRejectsEmptyCandidatePolicy(t *testing.T) {
 	require.ErrorIs(t, err, ErrPromptShotNoConfiguredModel)
 }
 
+func TestSelectPromptShotModelSeparatesUnavailableResolverFromUnavailableCapability(t *testing.T) {
+	policy := system_setting.PromptShotSetting{
+		GenerateModels: []string{"image-model"},
+		Capabilities: []system_setting.PromptShotChannelCapability{
+			{ChannelID: 9, Model: "image-model", Operation: system_setting.PromptShotOperationGenerate},
+		},
+	}
+
+	selection, err := SelectPromptShotModel(
+		PromptShotSelectionRequest{Group: "member"},
+		system_setting.PromptShotOperationGenerate,
+		policy,
+		nil,
+	)
+
+	require.Nil(t, selection)
+	require.ErrorIs(t, err, ErrPromptShotCapabilityResolverUnavailable)
+}
+
+func TestSelectPromptShotModelHidesCapabilityResolverFailures(t *testing.T) {
+	policy := system_setting.PromptShotSetting{
+		GenerateModels: []string{"image-model"},
+		Capabilities: []system_setting.PromptShotChannelCapability{
+			{ChannelID: 9, Model: "image-model", Operation: system_setting.PromptShotOperationGenerate},
+		},
+	}
+	resolver := &promptShotCapabilityResolverStub{err: errors.New("upstream lookup details")}
+
+	selection, err := SelectPromptShotModel(
+		PromptShotSelectionRequest{Group: "member"},
+		system_setting.PromptShotOperationGenerate,
+		policy,
+		resolver,
+	)
+
+	require.Nil(t, selection)
+	require.ErrorIs(t, err, ErrPromptShotCapabilityCheckFailed)
+	require.NotContains(t, err.Error(), "upstream lookup details")
+}
+
 func TestSelectPromptShotModelRejectsTokenModelWhitelistBypass(t *testing.T) {
 	policy := system_setting.PromptShotSetting{
 		EditModels: []string{"image-edit"},
@@ -103,6 +145,7 @@ func TestSelectPromptShotModelDoesNotTreatEditCapabilityAsGenerationCapability(t
 
 	require.Nil(t, selection)
 	require.ErrorIs(t, err, ErrPromptShotNoAvailableCapability)
+	require.NotContains(t, err.Error(), "token")
 	require.Empty(t, resolver.calls)
 }
 

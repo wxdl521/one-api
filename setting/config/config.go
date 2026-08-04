@@ -18,6 +18,19 @@ type ConfigManager struct {
 
 var GlobalConfig = NewConfigManager()
 
+// CustomConfig supports configurations that need atomic snapshots instead of
+// reflection-based in-place field updates.
+type CustomConfig interface {
+	ConfigToMap() (map[string]string, error)
+	UpdateConfigFromMap(map[string]string) error
+}
+
+// ConfigUpdateValidator rejects invalid option values before callers persist
+// them. Configurations without this interface keep the existing behavior.
+type ConfigUpdateValidator interface {
+	ValidateConfigUpdate(map[string]string) error
+}
+
 func NewConfigManager() *ConfigManager {
 	return &ConfigManager{
 		configs: make(map[string]interface{}),
@@ -36,6 +49,17 @@ func (cm *ConfigManager) Get(name string) interface{} {
 	cm.mutex.RLock()
 	defer cm.mutex.RUnlock()
 	return cm.configs[name]
+}
+
+func (cm *ConfigManager) ValidateConfigUpdate(name string, values map[string]string) error {
+	cm.mutex.RLock()
+	cfg := cm.configs[name]
+	cm.mutex.RUnlock()
+	validator, ok := cfg.(ConfigUpdateValidator)
+	if !ok {
+		return nil
+	}
+	return validator.ValidateConfigUpdate(values)
 }
 
 // LoadFromDB 从数据库加载配置
@@ -91,6 +115,10 @@ func (cm *ConfigManager) SaveToDB(updateFunc func(key, value string) error) erro
 
 // 辅助函数：将配置对象转换为map
 func configToMap(config interface{}) (map[string]string, error) {
+	if customConfig, ok := config.(CustomConfig); ok {
+		return customConfig.ConfigToMap()
+	}
+
 	result := make(map[string]string)
 
 	val := reflect.ValueOf(config)
@@ -163,6 +191,10 @@ func configToMap(config interface{}) (map[string]string, error) {
 
 // 辅助函数：从map更新配置对象
 func updateConfigFromMap(config interface{}, configMap map[string]string) error {
+	if customConfig, ok := config.(CustomConfig); ok {
+		return customConfig.UpdateConfigFromMap(configMap)
+	}
+
 	val := reflect.ValueOf(config)
 	if val.Kind() != reflect.Ptr {
 		return nil

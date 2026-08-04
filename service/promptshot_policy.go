@@ -9,11 +9,13 @@ import (
 )
 
 var (
-	ErrPromptShotUnsupportedOperation  = errors.New("promptshot operation is unsupported")
-	ErrPromptShotGroupUnavailable      = errors.New("promptshot group is unavailable")
-	ErrPromptShotNoConfiguredModel     = errors.New("promptshot operation has no configured model")
-	ErrPromptShotTokenModelForbidden   = errors.New("promptshot token cannot access configured models")
-	ErrPromptShotNoAvailableCapability = errors.New("promptshot token has no available channel capability")
+	ErrPromptShotUnsupportedOperation          = errors.New("promptshot operation is unsupported")
+	ErrPromptShotGroupUnavailable              = errors.New("promptshot group is unavailable")
+	ErrPromptShotNoConfiguredModel             = errors.New("promptshot operation has no configured model")
+	ErrPromptShotTokenModelForbidden           = errors.New("promptshot token cannot access configured models")
+	ErrPromptShotCapabilityResolverUnavailable = errors.New("promptshot capability resolver is unavailable")
+	ErrPromptShotCapabilityCheckFailed         = errors.New("promptshot capability check failed")
+	ErrPromptShotNoAvailableCapability         = errors.New("promptshot has no available channel capability")
 )
 
 // PromptShotSelectionRequest contains only the authorization state required to
@@ -79,11 +81,11 @@ func SelectPromptShotModel(
 				continue
 			}
 			if resolver == nil {
-				return nil, ErrPromptShotNoAvailableCapability
+				return nil, ErrPromptShotCapabilityResolverUnavailable
 			}
 			available, err := resolver.IsAvailable(group, candidate, capability.RequestPath, capability.ChannelID)
 			if err != nil {
-				return nil, err
+				return nil, ErrPromptShotCapabilityCheckFailed
 			}
 			if !available {
 				continue

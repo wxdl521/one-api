@@ -1,9 +1,12 @@
 package system_setting
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
+	"github.com/QuantumNous/the-one/common"
 	"github.com/QuantumNous/the-one/setting/config"
 )
 
@@ -42,15 +45,123 @@ type PromptShotSetting struct {
 	Capabilities   []PromptShotChannelCapability `json:"capabilities"`
 }
 
-var promptShotSetting = PromptShotSetting{
-	ReverseModels:  []string{},
-	GenerateModels: []string{},
-	EditModels:     []string{},
-	Capabilities:   []PromptShotChannelCapability{},
+type promptShotConfig struct {
+	snapshot atomic.Pointer[PromptShotSetting]
 }
 
+var promptShotConfigStore = newPromptShotConfig()
+
 func init() {
-	config.GlobalConfig.Register("promptshot", &promptShotSetting)
+	config.GlobalConfig.Register("promptshot", promptShotConfigStore)
+}
+
+func newPromptShotConfig() *promptShotConfig {
+	store := &promptShotConfig{}
+	setting := promptShotDefaultSetting()
+	store.snapshot.Store(&setting)
+	return store
+}
+
+func promptShotDefaultSetting() PromptShotSetting {
+	return PromptShotSetting{
+		ReverseModels:  []string{},
+		GenerateModels: []string{},
+		EditModels:     []string{},
+		Capabilities:   []PromptShotChannelCapability{},
+	}
+}
+
+// Snapshot returns an independent copy, so callers cannot mutate the
+// configuration published to other requests.
+func (store *promptShotConfig) Snapshot() PromptShotSetting {
+	setting := store.snapshot.Load()
+	if setting == nil {
+		return promptShotDefaultSetting()
+	}
+	return setting.Normalized()
+}
+
+func (store *promptShotConfig) ConfigToMap() (map[string]string, error) {
+	setting := store.Snapshot()
+	values := map[string]any{
+		"reverse_models":  setting.ReverseModels,
+		"generate_models": setting.GenerateModels,
+		"edit_models":     setting.EditModels,
+		"capabilities":    setting.Capabilities,
+	}
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		encoded, err := common.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		result[key] = string(encoded)
+	}
+	return result, nil
+}
+
+func (store *promptShotConfig) ValidateConfigUpdate(values map[string]string) error {
+	_, err := promptShotSettingFromConfigMap(store.Snapshot(), values)
+	return err
+}
+
+func (store *promptShotConfig) UpdateConfigFromMap(values map[string]string) error {
+	setting, err := promptShotSettingFromConfigMap(store.Snapshot(), values)
+	if err != nil {
+		return err
+	}
+	store.snapshot.Store(&setting)
+	return nil
+}
+
+func promptShotSettingFromConfigMap(current PromptShotSetting, values map[string]string) (PromptShotSetting, error) {
+	setting := current
+	for key, rawValue := range values {
+		switch key {
+		case "reverse_models", "generate_models", "edit_models":
+			models, err := parsePromptShotModels(key, rawValue)
+			if err != nil {
+				return PromptShotSetting{}, err
+			}
+			switch key {
+			case "reverse_models":
+				setting.ReverseModels = models
+			case "generate_models":
+				setting.GenerateModels = models
+			case "edit_models":
+				setting.EditModels = models
+			}
+		case "capabilities":
+			capabilities, err := parsePromptShotCapabilities(rawValue)
+			if err != nil {
+				return PromptShotSetting{}, err
+			}
+			setting.Capabilities = capabilities
+		}
+	}
+	return setting.validateAndNormalize()
+}
+
+func parsePromptShotModels(key, rawValue string) ([]string, error) {
+	if strings.TrimSpace(rawValue) == "" || strings.TrimSpace(rawValue) == "null" {
+		return nil, fmt.Errorf("promptshot.%s must be a JSON array", key)
+	}
+	var models []string
+	if err := common.UnmarshalJsonStr(rawValue, &models); err != nil {
+		return nil, fmt.Errorf("promptshot.%s must be a JSON array: %w", key, err)
+	}
+	return models, nil
+}
+
+func parsePromptShotCapabilities(rawValue string) ([]PromptShotChannelCapability, error) {
+	if strings.TrimSpace(rawValue) == "" || strings.TrimSpace(rawValue) == "null" {
+		return nil, fmt.Errorf("promptshot.capabilities must be a JSON array")
+	}
+	var capabilities []PromptShotChannelCapability
+	if err := common.UnmarshalJsonStr(rawValue, &capabilities); err != nil {
+		return nil, fmt.Errorf("promptshot.capabilities must be a JSON array: %w", err)
+	}
+	return capabilities, nil
 }
 
 func (operation PromptShotOperation) Canonical() PromptShotOperation {
@@ -107,6 +218,15 @@ func (s PromptShotSetting) ModelsForOperation(operation PromptShotOperation) []s
 }
 
 func (s PromptShotSetting) Normalized() PromptShotSetting {
+	normalized, _ := s.normalize(false)
+	return normalized
+}
+
+func (s PromptShotSetting) validateAndNormalize() (PromptShotSetting, error) {
+	return s.normalize(true)
+}
+
+func (s PromptShotSetting) normalize(strict bool) (PromptShotSetting, error) {
 	s.ReverseModels = normalizePromptShotModels(s.ReverseModels)
 	s.GenerateModels = normalizePromptShotModels(s.GenerateModels)
 	s.EditModels = normalizePromptShotModels(s.EditModels)
@@ -118,12 +238,18 @@ func (s PromptShotSetting) Normalized() PromptShotSetting {
 		capability.Operation = capability.Operation.Canonical()
 		capability.RequestPath = strings.TrimSpace(capability.RequestPath)
 		if capability.ChannelID <= 0 || capability.Model == "" || capability.Operation == "" {
+			if strict {
+				return PromptShotSetting{}, fmt.Errorf("promptshot capability must include a positive channel_id, model, and operation")
+			}
 			continue
 		}
 		if capability.RequestPath == "" {
 			capability.RequestPath = capability.Operation.DefaultRequestPath()
 		}
 		if !capability.Operation.SupportsRequestPath(capability.RequestPath) {
+			if strict {
+				return PromptShotSetting{}, fmt.Errorf("promptshot capability path is invalid for operation %s", capability.Operation)
+			}
 			continue
 		}
 
@@ -140,11 +266,11 @@ func (s PromptShotSetting) Normalized() PromptShotSetting {
 		capabilities = append(capabilities, capability)
 	}
 	s.Capabilities = capabilities
-	return s
+	return s, nil
 }
 
 func GetPromptShotSetting() PromptShotSetting {
-	return promptShotSetting.Normalized()
+	return promptShotConfigStore.Snapshot()
 }
 
 func normalizePromptShotModels(models []string) []string {
