@@ -68,6 +68,8 @@ export const miniAppStrings = {
   textTestSucceeded: '测试已完成。',
   textTestTimedOut: '测试等待超时，可稍后查询同一请求状态。',
   textTestUnavailable: '文本测试暂未开放，请稍后再试。',
+  userAgreement: '用户协议',
+  userAgreementUnavailable: '暂时无法打开用户协议，请稍后重试。',
   username: '用户名',
   tokenCreate: '创建 Token',
   tokenCreatedKey: '请立即保存以下密钥，它仅在本次创建时显示。',

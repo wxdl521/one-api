@@ -144,7 +144,7 @@ describe('AccountPage overview', () => {
     expect(taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' })
   })
 
-  it('navigates to every account capability and exposes logout, privacy, support, and complaint actions', async () => {
+  it('navigates to every account capability and exposes logout, terms, privacy, support, and complaint actions', async () => {
     accountService.getAccountOverview.mockResolvedValue(overview)
     authService.logoutMiniApp.mockResolvedValue(undefined)
     let renderer: ReactTestRenderer
@@ -173,6 +173,11 @@ describe('AccountPage overview', () => {
     const complaintButton = getButton(renderer!, t('complaint'))
     expect(supportButton.props.openType).toBe('contact')
     expect(complaintButton.props.openType).toBe('feedback')
+
+    await act(async () => {
+      getButton(renderer!, t('userAgreement')).props.onClick()
+    })
+    expect(taro.navigateTo).toHaveBeenLastCalledWith({ url: '/pages/user-agreement/index' })
 
     await act(async () => {
       getButton(renderer!, t('privacy')).props.onClick()

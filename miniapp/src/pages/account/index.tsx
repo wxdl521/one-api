@@ -111,6 +111,9 @@ export default function AccountPage() {
           <Button className="account-refresh" onClick={() => void openPrivacy()}>
             {t('privacy')}
           </Button>
+          <Button className="account-refresh" onClick={() => void navigateTo('/pages/user-agreement/index')}>
+            {t('userAgreement')}
+          </Button>
           <Button className="account-refresh" openType="contact">
             {t('support')}
           </Button>

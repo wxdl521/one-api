@@ -13,6 +13,7 @@ describe('phase-one route manifest', () => {
       'pages/login/index',
       'pages/binding/index',
       'pages/account/index',
+      'pages/user-agreement/index',
       'pages/tokens/index',
       'pages/products/index',
       'pages/orders/index',

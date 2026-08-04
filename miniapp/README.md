@@ -30,7 +30,7 @@ The tracked project configuration deliberately uses `touristappid`. A real AppID
 
 ## Development base URL
 
-`config/index.ts` reads `TARO_APP_API_BASE_URL` and `TARO_APP_MINIAPP_BINDING_ORIGIN` while compiling. They become the public `__MINIAPP_API_BASE_URL__` and `__MINIAPP_BINDING_ORIGIN__` constants. `miniapp/.env.example` contains non-deployment placeholders only; replace them for the intended environment and never place secrets in a Mini Program environment file. Runtime API calls target only `/api/miniapp/v1`, require an HTTPS base URL, and fail closed when the compiled value is missing or invalid. Browser account binding additionally accepts only the configured HTTPS origin's exact `/miniapp-bind` page.
+`config/index.ts` reads `TARO_APP_API_BASE_URL` and `TARO_APP_MINIAPP_BINDING_ORIGIN` while compiling. They become the public `__MINIAPP_API_BASE_URL__` and `__MINIAPP_BINDING_ORIGIN__` constants. `miniapp/.env.example` contains non-deployment placeholders only; replace them for the intended environment and never place secrets in a Mini Program environment file. Runtime API calls target only `/api/miniapp/v1`, require an HTTPS base URL, and fail closed when the compiled value is missing or invalid. Browser account binding and checkout accept only the configured HTTPS origin's exact approved pages; the in-app user agreement uses its exact public `/user-agreement` page.
 
 For PowerShell, switch a local development build with:
 

@@ -22,7 +22,7 @@ The Mini Program does not request profile, phone-number, location, contacts, cam
 `miniapp/.env.example` contains the only client-build settings:
 
 - `TARO_APP_API_BASE_URL` is the public HTTPS gateway origin.
-- `TARO_APP_MINIAPP_BINDING_ORIGIN` is the public HTTPS console origin used only to validate the exact `/miniapp-bind` handoff page.
+- `TARO_APP_MINIAPP_BINDING_ORIGIN` is the public HTTPS console origin used to validate the exact `/miniapp-bind` and `/miniapp-checkout` handoff pages and to open the exact public `/user-agreement` page.
 
 Both values are compiled into the Mini Program and must be treated as public. Copy the example to an ignored local `.env`, replace the `.invalid` placeholders for the intended environment, and keep development, test, staging, and production origins separate. The client fails closed when either value is absent or malformed.
 
