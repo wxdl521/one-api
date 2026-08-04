@@ -178,7 +178,11 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (theOneError *typ
 
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
-		logger.LogError(c, "Do gemini request failed: "+err.Error())
+		if service.IsPromptShotCompatibleRequest(c) {
+			logger.LogError(c, "Do gemini request failed for promptshot request")
+		} else {
+			logger.LogError(c, "Do gemini request failed: "+err.Error())
+		}
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 
@@ -284,7 +288,11 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo) (theOne
 
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
-		logger.LogError(c, "Do gemini request failed: "+err.Error())
+		if service.IsPromptShotCompatibleRequest(c) {
+			logger.LogError(c, "Do gemini request failed for promptshot request")
+		} else {
+			logger.LogError(c, "Do gemini request failed: "+err.Error())
+		}
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 

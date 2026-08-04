@@ -240,7 +240,11 @@ func asyncTaskWait(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (
 		rsp, err, body := updateTask(info, taskID)
 		responseBody = body
 		if err != nil {
-			logger.LogWarn(c, "asyncTaskWait UpdateTask err: "+err.Error())
+			if service.IsPromptShotCompatibleRequest(c) {
+				logger.LogWarn(c, "asyncTaskWait update failed for promptshot request")
+			} else {
+				logger.LogWarn(c, "asyncTaskWait UpdateTask err: "+err.Error())
+			}
 			time.Sleep(time.Duration(waitSeconds) * time.Second)
 			continue
 		}
@@ -298,7 +302,11 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 	}
 
 	if aliTaskResponse.Message != "" {
-		logger.LogError(c, "ali_async_task_failed: "+aliTaskResponse.Message)
+		if service.IsPromptShotCompatibleRequest(c) {
+			logger.LogError(c, "ali_async_task_failed for promptshot request")
+		} else {
+			logger.LogError(c, "ali_async_task_failed: "+aliTaskResponse.Message)
+		}
 		return types.NewError(errors.New(aliTaskResponse.Message), types.ErrorCodeBadResponse), nil
 	}
 
@@ -326,10 +334,12 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 		}
 	}
 
-	if a.IsSyncImageModel {
-		logger.LogDebug(c, "ali_sync_image_result: %s", originRespBody)
-	} else {
-		logger.LogDebug(c, "ali_async_image_result: %s", originRespBody)
+	if !service.IsPromptShotCompatibleRequest(c) {
+		if a.IsSyncImageModel {
+			logger.LogDebug(c, "ali_sync_image_result: %s", originRespBody)
+		} else {
+			logger.LogDebug(c, "ali_async_image_result: %s", originRespBody)
+		}
 	}
 
 	imageResponses := responseAli2OpenAIImage(c, aliResponse, originRespBody, info, responseFormat)

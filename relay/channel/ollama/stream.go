@@ -117,7 +117,11 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 		var chunk ollamaChatStreamChunk
 		if err := common.Unmarshal([]byte(line), &chunk); err != nil {
-			logger.LogError(c, "ollama stream json decode error: "+err.Error()+" line="+line)
+			if service.IsPromptShotCompatibleRequest(c) {
+				logger.LogError(c, "ollama stream json decode error for promptshot request")
+			} else {
+				logger.LogError(c, "ollama stream json decode error: "+err.Error()+" line="+line)
+			}
 			return usage, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
 		if chunk.Model != "" {
@@ -210,7 +214,7 @@ func ollamaChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	}
 	service.CloseResponseBodyGracefully(resp)
 	raw := string(body)
-	if common.DebugEnabled {
+	if common.DebugEnabled && !service.IsPromptShotCompatibleRequest(c) {
 		println("ollama non-stream raw resp:", raw)
 	}
 

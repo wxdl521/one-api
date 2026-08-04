@@ -208,6 +208,47 @@ func TestBuildPromptShotRelayRequestDoesNotAcceptDataURLOrUnsupportedMIME(t *tes
 	require.ErrorIs(t, err, errPromptShotInvalidImage)
 }
 
+func TestPromptShotDecodeImageRejectsOversizedEncodedInputBeforeAllocation(t *testing.T) {
+	tooLarge := strings.Repeat("A", promptShotMaxImageEncodedBytes+4)
+
+	_, _, err := promptShotDecodeImage(tooLarge, "image/png")
+
+	require.ErrorIs(t, err, errPromptShotInvalidImage)
+}
+
+func TestPromptShotDecodeImageRejectsOversizedEncodedInputConcurrently(t *testing.T) {
+	tooLarge := strings.Repeat("A", promptShotMaxImageEncodedBytes+4)
+	var waitGroup sync.WaitGroup
+	errors := make(chan error, 4)
+	for index := 0; index < 4; index++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			_, _, err := promptShotDecodeImage(tooLarge, "image/png")
+			errors <- err
+		}()
+	}
+	waitGroup.Wait()
+	close(errors)
+	for err := range errors {
+		require.ErrorIs(t, err, errPromptShotInvalidImage)
+	}
+}
+
+func TestPromptShotDecodeImageRejectsInvalidBase64Padding(t *testing.T) {
+	_, _, err := promptShotDecodeImage("YWJj=", "image/png")
+
+	require.ErrorIs(t, err, errPromptShotInvalidImage)
+}
+
+func TestNormalizePromptShotImageResponseRejectsOversizedBase64WithoutDecodingIt(t *testing.T) {
+	tooLarge := strings.Repeat("A", promptShotMaxImageEncodedBytes+4)
+
+	_, err := normalizePromptShotImageResponse([]byte(`{"data":[{"b64_json":"` + tooLarge + `"}]}`))
+
+	require.ErrorIs(t, err, errPromptShotImageNotBase64)
+}
+
 func TestNormalizePromptShotResponseDoesNotExposeUpstreamBodyOnFailure(t *testing.T) {
 	response, err := promptShotSafeErrorResponse(429, []byte(`{"error":{"message":"provider-key-should-not-appear"}}`))
 

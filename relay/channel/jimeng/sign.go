@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/the-one/logger"
+	"github.com/QuantumNous/the-one/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -45,7 +46,9 @@ func SetPayloadHash(c *gin.Context, req any) error {
 	if err != nil {
 		return err
 	}
-	logger.LogInfo(c, fmt.Sprintf("SetPayloadHash body: %s", body))
+	if !service.IsPromptShotCompatibleRequest(c) {
+		logger.LogInfo(c, fmt.Sprintf("SetPayloadHash body: %s", body))
+	}
 	payloadHash := sha256.Sum256(body)
 	hexPayloadHash := hex.EncodeToString(payloadHash[:])
 	c.Set(HexPayloadHashKey, hexPayloadHash)

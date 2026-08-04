@@ -52,6 +52,48 @@ func TestPromptShotResponseAdapterHidesUpstreamFailureDetails(t *testing.T) {
 	assert.NotEmpty(t, gjson.Get(recorder.Body.String(), "error.message").String())
 }
 
+func TestPromptShotResponseAdapterKeepsUpstream422OperationNeutral(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.POST("/promptshot", func(c *gin.Context) {
+		c.Set(promptShotResponseKindContextKey, "image")
+	}, PromptShotResponseAdapter(), func(c *gin.Context) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": gin.H{"message": "provider capability details"}})
+	})
+
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/promptshot", nil))
+
+	require.Equal(t, http.StatusUnprocessableEntity, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "provider")
+	assert.NotContains(t, recorder.Body.String(), "参考图编辑能力")
+}
+
+func TestPromptShotResponseAdapterRejectsOversizedResponseAndScrubsUpstreamHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.POST("/promptshot", func(c *gin.Context) {
+		c.Set(promptShotResponseKindContextKey, "image")
+	}, PromptShotResponseAdapter(), func(c *gin.Context) {
+		c.Header("Set-Cookie", "upstream-secret=1")
+		c.Header("X-Upstream-Secret", "provider-token")
+		c.Header("X-Request-Id", "safe-request-id")
+		c.Header("Retry-After", "7")
+		_, _ = c.Writer.Write(make([]byte, promptShotMaxUpstreamResponseBytes+1))
+	})
+
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/promptshot", nil))
+
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	assert.Empty(t, recorder.Header().Get("Set-Cookie"))
+	assert.Empty(t, recorder.Header().Get("X-Upstream-Secret"))
+	assert.Equal(t, "safe-request-id", recorder.Header().Get("X-Request-Id"))
+	assert.Equal(t, "7", recorder.Header().Get("Retry-After"))
+	assert.Equal(t, "application/json; charset=utf-8", recorder.Header().Get("Content-Type"))
+	assert.NotContains(t, recorder.Body.String(), "provider-token")
+}
+
 func TestPromptShotRelayErrorReportsUnavailableEditCapabilityClearly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -62,6 +104,17 @@ func TestPromptShotRelayErrorReportsUnavailableEditCapabilityClearly(t *testing.
 	require.Equal(t, http.StatusUnprocessableEntity, recorder.Code)
 	assert.Equal(t, "当前 Token 无可用参考图编辑能力", gjson.Get(recorder.Body.String(), "error.message").String())
 	assert.NotContains(t, recorder.Body.String(), "云端服务不可用")
+}
+
+func TestPromptShotRelayErrorDoesNotMisclassifyEditAuthorizationAsCapability(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+
+	promptShotRelayError(context, system_setting.PromptShotOperationEdit, service.ErrPromptShotGroupUnavailable)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "参考图编辑能力")
 }
 
 func TestPromptShotAuthValidateReturnsOnlySafeLabels(t *testing.T) {

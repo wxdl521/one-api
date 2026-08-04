@@ -112,7 +112,11 @@ func (o *AliOutput) ChoicesToOpenAIImageDate(c *gin.Context, responseFormat stri
 						if responseFormat == "b64_json" {
 							_, b64, err := service.GetImageFromUrl(content.Image)
 							if err != nil {
-								logger.LogError(c, "get_image_data_failed: "+err.Error())
+								if service.IsPromptShotCompatibleRequest(c) {
+									logger.LogError(c, "get_image_data_failed for promptshot request")
+								} else {
+									logger.LogError(c, "get_image_data_failed: "+err.Error())
+								}
 								continue
 							}
 							b64Json = b64
@@ -140,7 +144,11 @@ func (o *AliOutput) ResultToOpenAIImageDate(c *gin.Context, responseFormat strin
 		if responseFormat == "b64_json" {
 			_, b64, err := service.GetImageFromUrl(data.Url)
 			if err != nil {
-				logger.LogError(c, "get_image_data_failed: "+err.Error())
+				if service.IsPromptShotCompatibleRequest(c) {
+					logger.LogError(c, "get_image_data_failed for promptshot request")
+				} else {
+					logger.LogError(c, "get_image_data_failed: "+err.Error())
+				}
 				continue
 			}
 			b64Json = b64

@@ -25,7 +25,12 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-const promptShotMaxImageBytes = 20 << 20
+const (
+	promptShotMaxImageBytes              = 20 << 20
+	promptShotMaxImageEncodedBytes       = (promptShotMaxImageBytes + 2) / 3 * 4
+	promptShotMaxUpstreamResponseBytes   = 30 << 20
+	promptShotResponseMIMESniffByteCount = 12
+)
 
 var (
 	errPromptShotInvalidImage           = errors.New("promptshot image is invalid")
@@ -227,6 +232,10 @@ func promptShotReplaceRequestBody(c *gin.Context, request *promptShotRelayReques
 func promptShotRelayError(c *gin.Context, operation system_setting.PromptShotOperation, err error) {
 	status := http.StatusBadRequest
 	message := "请求参数无效"
+	if common.IsRequestBodyTooLargeError(err) {
+		status = http.StatusRequestEntityTooLarge
+		message = "请求体过大"
+	}
 	if errors.Is(err, service.ErrPromptShotNoConfiguredModel) || errors.Is(err, service.ErrPromptShotNoAvailableCapability) || errors.Is(err, service.ErrPromptShotCapabilityCheckFailed) || errors.Is(err, service.ErrPromptShotCapabilityResolverUnavailable) {
 		status = http.StatusUnprocessableEntity
 		message = "当前 Token 无可用此功能"
@@ -235,17 +244,25 @@ func promptShotRelayError(c *gin.Context, operation system_setting.PromptShotOpe
 		status = http.StatusForbidden
 		message = "当前 Token 无权使用此功能"
 	}
-	if operation.Canonical() == system_setting.PromptShotOperationEdit && (status == http.StatusUnprocessableEntity || status == http.StatusForbidden) {
+	if operation.Canonical() == system_setting.PromptShotOperationEdit && promptShotEditCapabilityMissing(err) {
 		status = http.StatusUnprocessableEntity
 		message = "当前 Token 无可用参考图编辑能力"
 	}
 	c.AbortWithStatusJSON(status, gin.H{"error": gin.H{"message": message}})
 }
 
+func promptShotEditCapabilityMissing(err error) bool {
+	return errors.Is(err, service.ErrPromptShotNoConfiguredModel) ||
+		errors.Is(err, service.ErrPromptShotNoAvailableCapability) ||
+		errors.Is(err, service.ErrPromptShotTokenModelForbidden)
+}
+
 type promptShotResponseWriter struct {
 	gin.ResponseWriter
-	body   bytes.Buffer
-	status int
+	body     bytes.Buffer
+	status   int
+	overflow bool
+	maxBytes int
 }
 
 func (w *promptShotResponseWriter) WriteHeader(status int) {
@@ -263,6 +280,14 @@ func (w *promptShotResponseWriter) WriteHeaderNow() {
 func (w *promptShotResponseWriter) Write(data []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
+	}
+	maxBytes := w.maxBytes
+	if maxBytes <= 0 {
+		maxBytes = promptShotMaxUpstreamResponseBytes
+	}
+	if len(data) > maxBytes-w.body.Len() {
+		w.overflow = true
+		return len(data), nil
 	}
 	return w.body.Write(data)
 }
@@ -303,7 +328,13 @@ func (w *promptShotResponseWriter) Pusher() http.Pusher {
 func promptShotFlushResponse(c *gin.Context, original gin.ResponseWriter, buffered *promptShotResponseWriter, kind string) {
 	status := buffered.Status()
 	response := buffered.body.Bytes()
-	if status >= http.StatusBadRequest {
+	if buffered.overflow {
+		status = http.StatusBadGateway
+		safe, err := promptShotSafeErrorResponse(status, nil)
+		if err == nil {
+			response = safe.Body
+		}
+	} else if status >= http.StatusBadRequest {
 		safe, err := promptShotSafeErrorResponse(status, response)
 		if err == nil {
 			status = safe.Status
@@ -321,10 +352,25 @@ func promptShotFlushResponse(c *gin.Context, original gin.ResponseWriter, buffer
 			response = normalized
 		}
 	}
-	original.Header().Del("Content-Length")
+	promptShotResetResponseHeaders(original.Header())
 	original.Header().Set("Content-Type", "application/json; charset=utf-8")
 	original.WriteHeader(status)
 	_, _ = original.Write(response)
+}
+
+func promptShotResetResponseHeaders(headers http.Header) {
+	allowed := make(http.Header)
+	for _, key := range []string{common.RequestIdKey, common.UpstreamRequestIdKey, "X-Request-Id", "Request-Id", "Retry-After"} {
+		if values := headers.Values(key); len(values) > 0 {
+			allowed[key] = append([]string(nil), values...)
+		}
+	}
+	for key := range headers {
+		headers.Del(key)
+	}
+	for key, values := range allowed {
+		headers[key] = values
+	}
 }
 
 func buildPromptShotRelayRequest(
@@ -461,11 +507,44 @@ func promptShotDecodeImage(imageB64, mimeType string) ([]byte, string, error) {
 	if imageB64 == "" || strings.HasPrefix(imageB64, "data:") || !promptShotSupportedMIME(mimeType) {
 		return nil, "", errPromptShotInvalidImage
 	}
-	decoded, err := base64.StdEncoding.DecodeString(imageB64)
-	if err != nil || len(decoded) == 0 || len(decoded) > promptShotMaxImageBytes {
+	decodedLength, ok := promptShotBase64DecodedLength(imageB64, promptShotMaxImageBytes)
+	if !ok {
 		return nil, "", errPromptShotInvalidImage
 	}
-	return decoded, mimeType, nil
+	decoded := make([]byte, decodedLength)
+	n, err := base64.StdEncoding.Decode(decoded, []byte(imageB64))
+	if err != nil || n == 0 {
+		return nil, "", errPromptShotInvalidImage
+	}
+	return decoded[:n], mimeType, nil
+}
+
+// promptShotBase64DecodedLength validates padded standard Base64 before it
+// permits a decoded-image allocation. DecodedLen is an upper bound, so padding
+// is subtracted explicitly to make the 20 MiB boundary exact.
+func promptShotBase64DecodedLength(encoded string, maxDecodedBytes int) (int, bool) {
+	if encoded == "" || maxDecodedBytes <= 0 || len(encoded) > (maxDecodedBytes+2)/3*4 || len(encoded)%4 != 0 {
+		return 0, false
+	}
+
+	padding := 0
+	if index := strings.IndexByte(encoded, '='); index >= 0 {
+		padding = len(encoded) - index
+		if padding > 2 || index < len(encoded)-2 || strings.Trim(encoded[index:], "=") != "" {
+			return 0, false
+		}
+		if (padding == 1 && index%4 != 3) || (padding == 2 && index%4 != 2) {
+			return 0, false
+		}
+	}
+	for index := 0; index < len(encoded)-padding; index++ {
+		value := encoded[index]
+		if !(value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z' || value >= '0' && value <= '9' || value == '+' || value == '/') {
+			return 0, false
+		}
+	}
+	decodedLength := base64.StdEncoding.DecodedLen(len(encoded)) - padding
+	return decodedLength, decodedLength > 0 && decodedLength <= maxDecodedBytes
 }
 
 func promptShotSupportedMIME(mimeType string) bool {
@@ -504,13 +583,22 @@ func normalizePromptShotImageResponse(body []byte) ([]byte, error) {
 	if b64 == "" || strings.HasPrefix(b64, "data:") {
 		return nil, errPromptShotImageNotBase64
 	}
-	image, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
+	if _, ok := promptShotBase64DecodedLength(b64, promptShotMaxImageBytes); !ok {
+		return nil, errPromptShotImageNotBase64
+	}
+	sniffLength := len(b64)
+	maxEncodedSniffLength := (promptShotResponseMIMESniffByteCount + 2) / 3 * 4
+	if sniffLength > maxEncodedSniffLength {
+		sniffLength = maxEncodedSniffLength
+	}
+	image := make([]byte, base64.StdEncoding.DecodedLen(sniffLength))
+	n, err := base64.StdEncoding.Decode(image, []byte(b64[:sniffLength]))
+	if err != nil || n == 0 {
 		return nil, errPromptShotImageNotBase64
 	}
 	response := map[string]any{
 		"image_b64": b64,
-		"mime":      promptShotResponseMIME(image),
+		"mime":      promptShotResponseMIME(image[:n]),
 	}
 	if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
 		var value any
@@ -580,7 +668,7 @@ func promptShotSafeErrorResponse(status int, _ []byte) (*promptShotSafeResponse,
 	case http.StatusForbidden:
 		message = "当前 Token 无权使用此功能"
 	case http.StatusUnprocessableEntity:
-		message = "当前 Token 无可用参考图编辑能力"
+		message = "请求无法处理"
 	case http.StatusTooManyRequests:
 		message = "请求过于频繁，请稍后重试"
 	default:

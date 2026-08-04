@@ -209,7 +209,11 @@ func handleCozeEvent(c *gin.Context, event string, data string, responseText *st
 			return
 		}
 
-		common.SysLog(fmt.Sprintf("stream event error: %v %v", errorData.Code, errorData.Message))
+		if service.IsPromptShotCompatibleRequest(c) {
+			common.SysLog("coze stream event error for promptshot request")
+		} else {
+			common.SysLog(fmt.Sprintf("stream event error: %v %v", errorData.Code, errorData.Message))
+		}
 	}
 }
 
