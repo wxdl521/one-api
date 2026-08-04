@@ -17,6 +17,7 @@ const (
 	miniAppMaxCodeLength   = 2048
 	miniAppMaxTicketLength = 512
 	miniAppMaxSIDLength    = 64
+	miniAppRequestMaxBytes = 8 << 10
 )
 
 func MiniAppWechatLogin(c *gin.Context) {
@@ -159,8 +160,8 @@ func ConfirmMiniAppBrowserBinding(c *gin.Context) {
 }
 
 func decodeMiniAppRequest(c *gin.Context, allowedFields ...string) (map[string]json.RawMessage, bool) {
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, miniAppRequestMaxBytes+1))
+	if err != nil || len(body) > miniAppRequestMaxBytes {
 		writeMiniAppInvalidRequest(c)
 		return nil, false
 	}

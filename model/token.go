@@ -34,6 +34,8 @@ type Token struct {
 
 const TokenSourceMiniApp = "miniapp"
 
+var ErrTokenLimitReached = errors.New("token limit reached")
+
 func (token *Token) Clean() {
 	token.Key = ""
 }
@@ -336,6 +338,29 @@ func (token *Token) Insert() error {
 	var err error
 	err = DB.Create(token).Error
 	return err
+}
+
+// CreateTokenWithUserLimit serializes each user's token creation so the
+// configured limit is checked against the same transaction that inserts it.
+func CreateTokenWithUserLimit(token *Token, maxTokens int) error {
+	if token == nil || token.UserId <= 0 {
+		return errors.New("token or user id is empty")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", token.UserId).First(&user).Error; err != nil {
+			return err
+		}
+
+		var count int64
+		if err := tx.Model(&Token{}).Where("user_id = ?", token.UserId).Count(&count).Error; err != nil {
+			return err
+		}
+		if count >= int64(maxTokens) {
+			return ErrTokenLimitReached
+		}
+		return tx.Create(token).Error
+	})
 }
 
 // Update Make sure your token's fields is completed, because this will update non-zero values

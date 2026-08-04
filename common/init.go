@@ -120,6 +120,7 @@ func InitEnv() {
 	WeChatMiniAppAppSecret = GetEnvOrDefaultString("WECHAT_MINIAPP_APP_SECRET", "")
 	WeChatMiniAppSubjectHMACKey = GetEnvOrDefaultString("WECHAT_MINIAPP_SUBJECT_HMAC_KEY", "")
 	MiniAppBindWebBaseURL = GetEnvOrDefaultString("MINIAPP_BIND_WEB_BASE_URL", "")
+	MiniAppAllowedModels = GetEnvOrDefaultString("MINIAPP_ALLOWED_MODELS", "")
 	MiniAppHTTPTimeout = time.Duration(GetEnvOrDefault("MINIAPP_HTTP_TIMEOUT_SECONDS", int(DefaultMiniAppHTTPTimeout/time.Second))) * time.Second
 	if MiniAppHTTPTimeout <= 0 {
 		MiniAppHTTPTimeout = DefaultMiniAppHTTPTimeout

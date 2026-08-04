@@ -58,6 +58,23 @@ func TestMiniAppWechatLoginRejectsUnknownAndEmptyRequestValues(t *testing.T) {
 	}
 }
 
+func TestDecodeMiniAppRequestRejectsOversizedBodies(t *testing.T) {
+	setupMiniAppControllerTest(t)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/tokens",
+		strings.NewReader(`{"name":"`+strings.Repeat("x", (8<<10))+`"}`),
+	)
+
+	_, ok := decodeMiniAppRequest(context, "name")
+
+	assert.False(t, ok)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "MINIAPP_INVALID_REQUEST")
+}
+
 func TestMiniAppLogoutRevokesTheAuthenticatedMiniProgramSession(t *testing.T) {
 	setupMiniAppControllerTest(t)
 	user := &model.User{

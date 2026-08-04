@@ -14,6 +14,8 @@ const miniAppSessionLoginMethod = "wechat-miniapp"
 
 const miniAppBindingRequestBodyMaxBytes = 8 << 10
 
+const miniAppTokenRequestBodyMaxBytes = 8 << 10
+
 // MiniAppFeatureGate rejects disabled or incomplete Mini Program deployments
 // before rate limits, body parsing, bot checks, or authentication run.
 func MiniAppFeatureGate() gin.HandlerFunc {
@@ -99,6 +101,34 @@ func MiniAppBindingRequestBodyLimit() gin.HandlerFunc {
 			return
 		}
 		if len(body) > miniAppBindingRequestBodyMaxBytes {
+			writeMiniAppRequestTooLarge(c)
+			return
+		}
+
+		c.Request.Body = io.NopCloser(bytes.NewReader(body))
+		c.Request.ContentLength = int64(len(body))
+		c.Next()
+	}
+}
+
+// MiniAppTokenRequestBodyLimit bounds the small token lifecycle payloads
+// before controllers parse JSON. It accepts unknown-length (chunked) bodies
+// only up to the same fixed limit.
+func MiniAppTokenRequestBodyLimit() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body == nil {
+			c.Next()
+			return
+		}
+		if c.Request.ContentLength > miniAppTokenRequestBodyMaxBytes {
+			writeMiniAppRequestTooLarge(c)
+			return
+		}
+
+		originalBody := c.Request.Body
+		body, err := io.ReadAll(io.LimitReader(originalBody, miniAppTokenRequestBodyMaxBytes+1))
+		_ = originalBody.Close()
+		if err != nil || len(body) > miniAppTokenRequestBodyMaxBytes {
 			writeMiniAppRequestTooLarge(c)
 			return
 		}

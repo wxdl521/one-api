@@ -87,6 +87,7 @@ func CreateMiniAppToken(userID int, request MiniAppTokenCreateRequest) (*MiniApp
 	if err != nil {
 		return nil, err
 	}
+	miniAppAllowed := miniAppAllowedModelSet(common.MiniAppAllowedModels)
 	allowed := make(map[string]struct{}, len(allowedModels))
 	for _, name := range allowedModels {
 		allowed[name] = struct{}{}
@@ -107,17 +108,13 @@ func CreateMiniAppToken(userID int, request MiniAppTokenCreateRequest) (*MiniApp
 		if _, exists := allowed[modelName]; !exists {
 			return nil, ErrMiniAppTokenInvalid
 		}
+		if _, exists := miniAppAllowed[modelName]; !exists {
+			return nil, ErrMiniAppTokenInvalid
+		}
 		seenModels[modelName] = struct{}{}
 		modelNames = append(modelNames, modelName)
 	}
 
-	count, err := model.CountUserTokens(userID)
-	if err != nil {
-		return nil, err
-	}
-	if count >= int64(operation_setting.GetMaxUserTokens()) {
-		return nil, ErrMiniAppTokenLimit
-	}
 	key, err := common.GenerateKey()
 	if err != nil {
 		return nil, err
@@ -138,7 +135,10 @@ func CreateMiniAppToken(userID int, request MiniAppTokenCreateRequest) (*MiniApp
 		CrossGroupRetry:    false,
 		Source:             model.TokenSourceMiniApp,
 	}
-	if err := token.Insert(); err != nil {
+	if err := model.CreateTokenWithUserLimit(token, operation_setting.GetMaxUserTokens()); err != nil {
+		if errors.Is(err, model.ErrTokenLimitReached) {
+			return nil, ErrMiniAppTokenLimit
+		}
 		return nil, err
 	}
 	return &MiniAppCreatedToken{
@@ -185,6 +185,17 @@ func RevokeMiniAppToken(userID, tokenID int) error {
 
 func miniAppTokenExpiryIsAllowed(days int) bool {
 	return days == 7 || days == 30 || days == 90
+}
+
+func miniAppAllowedModelSet(configuredModels string) map[string]struct{} {
+	models := strings.Split(configuredModels, ",")
+	allowed := make(map[string]struct{}, len(models))
+	for _, modelName := range models {
+		if modelName = strings.TrimSpace(modelName); modelName != "" {
+			allowed[modelName] = struct{}{}
+		}
+	}
+	return allowed
 }
 
 func miniAppTokenSummary(token *model.Token) MiniAppTokenSummary {

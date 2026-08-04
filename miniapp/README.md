@@ -48,6 +48,10 @@ Remove-Item Env:TARO_APP_MINIAPP_BINDING_ORIGIN
 bun run dev:weapp
 ```
 
+## Server token policy
+
+The gateway must configure `MINIAPP_ALLOWED_MODELS` before it enables Mini Program token creation. It is a comma-separated, exact model-name allowlist such as `gpt-mini,gpt-4.1-mini`. The default is empty and denies every model. A requested model must be present in this allowlist and remain enabled for the user's selected group; setting this variable never bypasses group availability checks.
+
 ## HTTPS and real-device testing
 
 Before adding or exercising API calls on a real device, configure the selected AppID's **request legal domain** in the WeChat Mini Program administration console. The domain must use publicly trusted HTTPS and satisfy WeChat's current domain, certificate, and TLS requirements. Developer Tools can relax domain checks only for local development; that does not make a domain valid for a real device.

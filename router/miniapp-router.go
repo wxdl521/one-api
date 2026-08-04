@@ -31,8 +31,8 @@ func SetMiniAppRouter(router *gin.Engine) {
 			protected.POST("/auth/logout", controller.MiniAppLogout)
 			protected.GET("/me/overview", controller.MiniAppAccountOverview)
 			protected.GET("/tokens", controller.MiniAppListTokens)
-			protected.POST("/tokens", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.MiniAppCreateToken)
-			protected.PATCH("/tokens/:id/status", middleware.CriticalRateLimit(), controller.MiniAppUpdateTokenStatus)
+			protected.POST("/tokens", middleware.MiniAppTokenRequestBodyLimit(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.MiniAppCreateToken)
+			protected.PATCH("/tokens/:id/status", middleware.MiniAppTokenRequestBodyLimit(), middleware.CriticalRateLimit(), controller.MiniAppUpdateTokenStatus)
 			protected.DELETE("/tokens/:id", middleware.CriticalRateLimit(), controller.MiniAppRevokeToken)
 		}
 	}

@@ -163,3 +163,36 @@ func TestMiniAppBindingRequestBodyLimitRejectsOversizedRequestsBeforeHandlers(t 
 	assert.Contains(t, response.Body.String(), "MINIAPP_REQUEST_TOO_LARGE")
 	assert.NotContains(t, response.Body.String(), "x")
 }
+
+func TestMiniAppTokenRequestBodyLimitRejectsOversizedKnownAndChunkedBodies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, requestBody := range []struct {
+		name          string
+		method        string
+		contentLength int64
+	}{
+		{name: "post known content length", method: http.MethodPost, contentLength: miniAppTokenRequestBodyMaxBytes + 1},
+		{name: "patch chunked body", method: http.MethodPatch, contentLength: -1},
+	} {
+		t.Run(requestBody.name, func(t *testing.T) {
+			router := gin.New()
+			handlerCalled := false
+			router.Handle(requestBody.method, "/tokens", MiniAppTokenRequestBodyLimit(), func(c *gin.Context) {
+				handlerCalled = true
+				c.Status(http.StatusNoContent)
+			})
+
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(requestBody.method, "/tokens", strings.NewReader(strings.Repeat("x", miniAppTokenRequestBodyMaxBytes+1)))
+			request.ContentLength = requestBody.contentLength
+			if requestBody.contentLength < 0 {
+				request.TransferEncoding = []string{"chunked"}
+			}
+			router.ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+			assert.False(t, handlerCalled)
+			assert.Contains(t, response.Body.String(), "MINIAPP_REQUEST_TOO_LARGE")
+		})
+	}
+}

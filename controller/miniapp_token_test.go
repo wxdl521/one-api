@@ -24,6 +24,7 @@ func setupMiniAppTokenControllerTest(t *testing.T) *gorm.DB {
 	previousType := common.MainDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousGroups := setting.UserUsableGroups2JSONString()
+	previousAllowedModels := common.MiniAppAllowedModels
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Ability{}))
@@ -31,10 +32,12 @@ func setupMiniAppTokenControllerTest(t *testing.T) *gorm.DB {
 	model.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
+	common.MiniAppAllowedModels = "gpt-mini"
 	t.Cleanup(func() {
 		model.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
+		common.MiniAppAllowedModels = previousAllowedModels
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousGroups))
 	})
 	return db
@@ -119,6 +122,55 @@ func TestMiniAppCreateTokenReturnsTheRawKeyOnlyInTheCreationResponse(t *testing.
 	var quota int
 	require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Select("quota").Scan(&quota).Error)
 	assert.Equal(t, 54321, quota)
+}
+
+func TestMiniAppCreateTokenRejectsModelsMissingServerAllowlist(t *testing.T) {
+	db := setupMiniAppTokenControllerTest(t)
+	configuredModels := common.MiniAppAllowedModels
+	common.MiniAppAllowedModels = ""
+	t.Cleanup(func() {
+		common.MiniAppAllowedModels = configuredModels
+	})
+	user := seedMiniAppTokenUser(t, db, "mini-token-allowlist-owner", 100)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "gpt-mini", ChannelId: 1, Enabled: true}).Error)
+
+	context, recorder := createMiniAppTokenContext(
+		t,
+		http.MethodPost,
+		"/api/miniapp/v1/tokens",
+		`{"name":"Mobile key","group":"default","models":["gpt-mini"],"expires_in_days":30}`,
+		user.Id,
+	)
+	MiniAppCreateToken(context)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "token_key")
+	var count int64
+	require.NoError(t, db.Model(&model.Token{}).Where("user_id = ?", user.Id).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestMiniAppCreateTokenRequiresEnabledModelForTheSelectedGroup(t *testing.T) {
+	db := setupMiniAppTokenControllerTest(t)
+	configuredModels := common.MiniAppAllowedModels
+	common.MiniAppAllowedModels = "gpt-not-available"
+	t.Cleanup(func() {
+		common.MiniAppAllowedModels = configuredModels
+	})
+	user := seedMiniAppTokenUser(t, db, "mini-token-group-owner", 100)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "gpt-mini", ChannelId: 1, Enabled: true}).Error)
+
+	context, recorder := createMiniAppTokenContext(
+		t,
+		http.MethodPost,
+		"/api/miniapp/v1/tokens",
+		`{"name":"Mobile key","group":"default","models":["gpt-not-available"],"expires_in_days":30}`,
+		user.Id,
+	)
+	MiniAppCreateToken(context)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "token_key")
 }
 
 func TestMiniAppCreateTokenRejectsUnconstrainedInputs(t *testing.T) {

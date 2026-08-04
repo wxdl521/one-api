@@ -54,6 +54,10 @@ var WeChatMiniAppSubjectHMACKey = ""
 var MiniAppBindWebBaseURL = ""
 var MiniAppHTTPTimeout = DefaultMiniAppHTTPTimeout
 
+// MiniAppAllowedModels is a comma-separated server-side allowlist for Mini
+// Program token model restrictions. An empty value denies every model.
+var MiniAppAllowedModels = ""
+
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 
 var SessionSecret = uuid.New().String()
