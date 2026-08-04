@@ -24,4 +24,5 @@ func TestMigrateDBCreatesMiniTextTestAttemptsTable(t *testing.T) {
 
 	require.NoError(t, migrateDB())
 	assert.True(t, db.Migrator().HasTable(&MiniTextTestAttempt{}))
+	assert.True(t, db.Migrator().HasIndex(&MiniTextTestAttempt{}, "idx_mini_text_test_expires_at"))
 }

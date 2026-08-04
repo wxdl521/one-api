@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/the-one/common"
 	"gorm.io/gorm/clause"
 )
 
@@ -26,6 +27,7 @@ type MiniTextTestAttempt struct {
 	ClientRequestID string     `json:"request_id" gorm:"type:varchar(128);not null;uniqueIndex:idx_mini_text_test_user_request,priority:2"`
 	Model           string     `json:"model" gorm:"type:varchar(255);not null"`
 	InputHMAC       string     `json:"-" gorm:"type:char(64);not null"`
+	ClaimNonce      string     `json:"-" gorm:"type:char(48);not null;default:''"`
 	State           string     `json:"state" gorm:"type:varchar(16);not null;index:idx_mini_text_test_state_expiry,priority:1"`
 	ChargeReference string     `json:"charge_ref,omitempty" gorm:"type:varchar(64);not null;default:''"`
 	ChargedQuota    int        `json:"charged_quota"`
@@ -33,7 +35,7 @@ type MiniTextTestAttempt struct {
 	CreatedAt       time.Time  `json:"created_at" gorm:"not null;index:idx_mini_text_test_user_created,priority:2"`
 	StartedAt       time.Time  `json:"started_at" gorm:"not null"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
-	ExpiresAt       time.Time  `json:"expires_at" gorm:"not null;index:idx_mini_text_test_state_expiry,priority:2"`
+	ExpiresAt       time.Time  `json:"expires_at" gorm:"not null;index:idx_mini_text_test_state_expiry,priority:2;index:idx_mini_text_test_expires_at"`
 	UpdatedAt       time.Time  `json:"-"`
 }
 
@@ -63,32 +65,33 @@ func CreateMiniTextTestAttempt(input MiniTextTestAttemptCreate) (*MiniTextTestAt
 		return nil, false, ErrMiniTextTestAttemptInvalid
 	}
 
+	claimNonce, err := common.GenerateRandomCharsKey(48)
+	if err != nil {
+		return nil, false, err
+	}
 	attempt := &MiniTextTestAttempt{
 		UserID:          input.UserID,
 		ClientRequestID: input.ClientRequestID,
 		Model:           input.Model,
 		InputHMAC:       input.InputHMAC,
+		ClaimNonce:      claimNonce,
 		State:           MiniTextTestAttemptStateRunning,
 		CreatedAt:       input.CreatedAt,
 		StartedAt:       input.CreatedAt,
 		ExpiresAt:       input.ExpiresAt,
 	}
-	result := DB.Clauses(clause.OnConflict{
+	if err := DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "client_request_id"}},
 		DoNothing: true,
-	}).Create(attempt)
-	if result.Error != nil {
-		return nil, false, result.Error
-	}
-	if result.RowsAffected == 1 {
-		return attempt, true, nil
+	}).Create(attempt).Error; err != nil {
+		return nil, false, err
 	}
 
 	var existing MiniTextTestAttempt
 	if err := DB.Where("user_id = ? AND client_request_id = ?", input.UserID, input.ClientRequestID).First(&existing).Error; err != nil {
 		return nil, false, err
 	}
-	return &existing, false, nil
+	return &existing, existing.ClaimNonce == claimNonce, nil
 }
 
 func GetMiniTextTestAttempt(userID int, clientRequestID string) (*MiniTextTestAttempt, error) {

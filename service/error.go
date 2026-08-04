@@ -86,6 +86,7 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (theOneErr *types.TheOneError) {
 	theOneErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	sensitiveRelayPayload := common.SensitiveRelayPayloadLoggingSuppressed(ctx)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -96,6 +97,9 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
 	buildErrWithBody := func(message string) error {
+		if sensitiveRelayPayload {
+			return fmt.Errorf("bad response status code %d", resp.StatusCode)
+		}
 		if message == "" {
 			return fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, responseBodyText)
 		}
@@ -117,6 +121,9 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
+			if sensitiveRelayPayload {
+				return types.NewOpenAIError(errors.New("upstream request failed"), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+			}
 			theOneErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
 			if showBodyWhenFail {
 				theOneErr.Err = buildErrWithBody(theOneErr.Error())
@@ -125,13 +132,16 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		}
 	}
 	message := errResponse.ToMessage()
+	if sensitiveRelayPayload {
+		message = "upstream request failed"
+	}
 	if message == "" {
 		// The body parsed as JSON but carried no usable error message; log the
 		// raw body so the upstream failure remains diagnosable.
 		logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
 	}
 	theOneErr = types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
-	if showBodyWhenFail {
+	if showBodyWhenFail && !sensitiveRelayPayload {
 		theOneErr.Err = buildErrWithBody(theOneErr.Error())
 	}
 	return

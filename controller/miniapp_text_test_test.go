@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -122,4 +123,36 @@ func TestMiniAppTextTestRejectsClientRelayControls(t *testing.T) {
 		assert.Contains(t, recorder.Body.String(), "MINIAPP_INVALID_REQUEST")
 	}
 	assert.Zero(t, relayCalls)
+}
+
+func TestMiniAppTextTestRelayResponseWriterDiscardsUpstreamOutput(t *testing.T) {
+	writer := newMiniAppTextTestRelayResponseWriter()
+	payload := bytes.Repeat([]byte("sensitive upstream output"), 4096)
+
+	n, err := writer.Write(payload)
+
+	require.NoError(t, err)
+	assert.Equal(t, len(payload), n)
+	assert.Equal(t, http.StatusOK, writer.StatusCode())
+	assert.Zero(t, writer.BufferedBytes())
+}
+
+func TestMiniAppTextTestRelayContextPropagatesClientCancellationToTerminalState(t *testing.T) {
+	callerContext, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodPost, "/api/miniapp/v1/text-tests", nil).WithContext(callerContext)
+
+	relayContext, stop := miniAppTextTestRelayContext(ginContext)
+	t.Cleanup(stop)
+	assert.True(t, common.SensitiveRelayPayloadLoggingSuppressed(relayContext))
+	cancel()
+	<-relayContext.Done()
+
+	completion, terminal := miniAppTextTestContextCompletion("relay-request-123", relayContext.Err())
+	require.True(t, terminal)
+	assert.Equal(t, model.MiniTextTestAttemptStateFailed, completion.State)
+	assert.Equal(t, "MINIAPP_TEXT_TEST_UNAVAILABLE", completion.ErrorCode)
+	assert.Equal(t, "relay-request-123", completion.ChargeReference)
 }

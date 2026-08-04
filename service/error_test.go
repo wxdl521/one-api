@@ -150,6 +150,20 @@ func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	require.Contains(t, logBuffer.String(), body)
 }
 
+func TestRelayErrorHandlerRedactsSensitiveRelayErrorPayload(t *testing.T) {
+	secret := "prompt-or-output-that-must-not-escape"
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"` + secret + `","type":"server_error"}}`)),
+	}
+
+	theOneError := RelayErrorHandler(common.WithSensitiveRelayPayloadLogging(context.Background()), resp, false)
+
+	require.NotNil(t, theOneError)
+	require.NotContains(t, theOneError.Error(), secret)
+	require.Equal(t, "upstream request failed", theOneError.Error())
+}
+
 func withDebugEnabled(t *testing.T, enabled bool) {
 	t.Helper()
 

@@ -3,9 +3,9 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -23,6 +23,47 @@ const (
 )
 
 var miniAppTextTestRelay = executeMiniAppTextTestRelay
+
+// miniAppTextTestRelayResponseWriter keeps only the relay status and headers.
+// The Mini Program BFF never returns upstream output, so retaining it in a
+// ResponseRecorder would allow an unbounded response body to accumulate in
+// memory without serving a caller.
+type miniAppTextTestRelayResponseWriter struct {
+	header     http.Header
+	statusCode int
+}
+
+func newMiniAppTextTestRelayResponseWriter() *miniAppTextTestRelayResponseWriter {
+	return &miniAppTextTestRelayResponseWriter{header: make(http.Header)}
+}
+
+func (w *miniAppTextTestRelayResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *miniAppTextTestRelayResponseWriter) WriteHeader(statusCode int) {
+	if w.statusCode == 0 {
+		w.statusCode = statusCode
+	}
+}
+
+func (w *miniAppTextTestRelayResponseWriter) Write(data []byte) (int, error) {
+	if w.statusCode == 0 {
+		w.statusCode = http.StatusOK
+	}
+	return len(data), nil
+}
+
+func (w *miniAppTextTestRelayResponseWriter) Flush() {}
+
+func (w *miniAppTextTestRelayResponseWriter) StatusCode() int {
+	if w.statusCode == 0 {
+		return http.StatusOK
+	}
+	return w.statusCode
+}
+
+func (w *miniAppTextTestRelayResponseWriter) BufferedBytes() int { return 0 }
 
 func MiniAppListTextTestModels(c *gin.Context) {
 	models, err := service.ListMiniTextTestModels(c.GetInt("id"))
@@ -95,6 +136,28 @@ func MiniAppTextTestStatus(c *gin.Context) {
 	common.ApiSuccess(c, status)
 }
 
+func miniAppTextTestRelayContext(c *gin.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(common.WithSensitiveRelayPayloadLogging(c.Request.Context()), miniAppTextTestWaitTimeout)
+}
+
+func miniAppTextTestContextCompletion(requestID string, err error) (service.MiniTextTestCompletion, bool) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return service.MiniTextTestCompletion{
+			State:           model.MiniTextTestAttemptStateTimedOut,
+			ChargeReference: requestID,
+			ErrorCode:       "MINIAPP_TEXT_TEST_TIMEOUT",
+		}, true
+	}
+	if errors.Is(err, context.Canceled) {
+		return service.MiniTextTestCompletion{
+			State:           model.MiniTextTestAttemptStateFailed,
+			ChargeReference: requestID,
+			ErrorCode:       "MINIAPP_TEXT_TEST_UNAVAILABLE",
+		}, true
+	}
+	return service.MiniTextTestCompletion{}, false
+}
+
 func executeMiniAppTextTestRelay(c *gin.Context, request service.MiniTextTestRequest) service.MiniTextTestCompletion {
 	requestID := c.GetString(common.RequestIdKey)
 	if requestID == "" {
@@ -117,8 +180,8 @@ func executeMiniAppTextTestRelay(c *gin.Context, request service.MiniTextTestReq
 		}
 	}
 
-	relayRecorder := httptest.NewRecorder()
-	relayContext, _ := gin.CreateTestContext(relayRecorder)
+	relayWriter := newMiniAppTextTestRelayResponseWriter()
+	relayContext, _ := gin.CreateTestContext(relayWriter)
 	for key, value := range c.Keys {
 		relayContext.Set(key, value)
 	}
@@ -128,7 +191,7 @@ func executeMiniAppTextTestRelay(c *gin.Context, request service.MiniTextTestReq
 	relayContext.Set(common.KeyRequestBody, nil)
 	defer common.CleanupBodyStorage(relayContext)
 	relayContext.Set(common.RequestIdKey, requestID)
-	relayRequestContext, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), miniAppTextTestWaitTimeout)
+	relayRequestContext, cancel := miniAppTextTestRelayContext(c)
 	defer cancel()
 	relayContext.Request = c.Request.Clone(relayRequestContext)
 	relayContext.Request.Method = http.MethodPost
@@ -140,6 +203,9 @@ func executeMiniAppTextTestRelay(c *gin.Context, request service.MiniTextTestReq
 	relayContext.Request.Header.Set("Accept", "application/json")
 	relayContext.Request.Body = io.NopCloser(bytes.NewReader(relayRequest))
 	relayContext.Request.ContentLength = int64(len(relayRequest))
+	if completion, terminal := miniAppTextTestContextCompletion(requestID, relayRequestContext.Err()); terminal {
+		return completion
+	}
 
 	// This is the existing relay entry sequence: channel distribution occurs
 	// before pricing and Relay performs the normal estimate/pre-consume/
@@ -150,16 +216,12 @@ func executeMiniAppTextTestRelay(c *gin.Context, request service.MiniTextTestReq
 		Relay(relayContext, types.RelayFormatOpenAI)
 	}
 
-	if relayRequestContext.Err() == context.DeadlineExceeded {
-		return service.MiniTextTestCompletion{
-			State:           model.MiniTextTestAttemptStateTimedOut,
-			ChargeReference: requestID,
-			ErrorCode:       "MINIAPP_TEXT_TEST_TIMEOUT",
-		}
+	if completion, terminal := miniAppTextTestContextCompletion(requestID, relayRequestContext.Err()); terminal {
+		return completion
 	}
-	if relayRecorder.Code < http.StatusOK || relayRecorder.Code >= http.StatusMultipleChoices {
+	if relayWriter.StatusCode() < http.StatusOK || relayWriter.StatusCode() >= http.StatusMultipleChoices {
 		errorCode := "MINIAPP_TEXT_TEST_UNAVAILABLE"
-		if relayRecorder.Code == http.StatusBadRequest || relayRecorder.Code == http.StatusForbidden || relayRecorder.Code == http.StatusTooManyRequests {
+		if relayWriter.StatusCode() == http.StatusBadRequest || relayWriter.StatusCode() == http.StatusForbidden || relayWriter.StatusCode() == http.StatusTooManyRequests {
 			errorCode = "MINIAPP_TEXT_TEST_REJECTED"
 		}
 		return service.MiniTextTestCompletion{
