@@ -172,7 +172,7 @@ export function UserAuthForm({
             throw new Error(t('Login flow expired. Please sign in again.'))
           }
           setPending2FAFlowToken(res.data.flow_token)
-          redirectTo2FA()
+          redirectTo2FA(redirectTo)
           return
         }
 

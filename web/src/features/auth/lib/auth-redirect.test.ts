@@ -21,9 +21,29 @@ import { describe, test } from 'node:test'
 
 import type { AuthUser } from '@/stores/auth-store'
 
-import { getSavedLanguage, sanitizeAuthRedirect } from './auth-redirect'
+import {
+  getSavedLanguage,
+  rememberAuthRedirect,
+  sanitizeAuthRedirect,
+  takeRememberedAuthRedirect,
+} from './auth-redirect'
 
 const origin = 'https://dashboard.example.com'
+
+function createSessionStorage() {
+  const values = new Map<string, string>()
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value)
+    },
+    removeItem(key: string) {
+      values.delete(key)
+    },
+  }
+}
 
 describe('authentication redirect validation', () => {
   test('preserves safe internal paths, search parameters, and fragments', () => {
@@ -60,6 +80,17 @@ describe('authentication redirect validation', () => {
   test('rejects invalid or non-HTTP application origins', () => {
     assert.equal(sanitizeAuthRedirect('/dashboard', 'not-an-origin'), null)
     assert.equal(sanitizeAuthRedirect('/dashboard', 'file:///tmp/app'), null)
+  })
+
+  test('retains a trusted destination through two-factor and OAuth reloads', () => {
+    const storage = createSessionStorage()
+
+    rememberAuthRedirect('/miniapp-checkout', origin, storage)
+    assert.equal(
+      takeRememberedAuthRedirect(undefined, origin, storage),
+      '/miniapp-checkout'
+    )
+    assert.equal(takeRememberedAuthRedirect(undefined, origin, storage), null)
   })
 })
 

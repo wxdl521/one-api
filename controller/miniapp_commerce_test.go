@@ -228,14 +228,14 @@ func TestMiniAppStartCheckoutReturnsOnlyAnOpaqueFragmentHandoff(t *testing.T) {
 	assert.NotContains(t, flow.Payload, "server-only-secret")
 }
 
-func TestMiniAppBrowserCheckoutConfirmsSameUserHandoff(t *testing.T) {
+func TestMiniAppBrowserCheckoutUsesUserFacingPlanPurchaseFlow(t *testing.T) {
 	db := setupMiniAppCommerceControllerTest(t)
 	owner := seedMiniAppCommerceUser(t, db, "mini-browser-checkout-owner")
 	miniSession, err := service.CreateMiniAppLoginSession(owner.Id, "127.0.0.1", "mini-checkout-test")
 	require.NoError(t, err)
 	browserSession, err := service.CreateLoginSession(owner.Id, "password", "127.0.0.1", "browser-checkout-test")
 	require.NoError(t, err)
-	payload, err := common.Marshal(map[string]any{"target_type": "product", "target_id": 42})
+	payload, err := common.Marshal(map[string]any{"target_type": "plan", "target_id": 42})
 	require.NoError(t, err)
 	ticket, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
 		Purpose: model.AuthFlowPurposeMiniAppCheckout, Provider: "wechat-miniapp", Intent: model.AuthFlowIntentCheckout,
@@ -255,7 +255,7 @@ func TestMiniAppBrowserCheckoutConfirmsSameUserHandoff(t *testing.T) {
 	ConfirmMiniAppBrowserCheckout(context)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), `"checkout_path":"/products/42"`)
+	assert.Contains(t, recorder.Body.String(), `"checkout_path":"/wallet?purchase_plan_id=42"`)
 	flow, err := model.GetAuthFlowState(ticket, model.AuthFlowMatch{
 		Purpose: model.AuthFlowPurposeMiniAppCheckout, Provider: "wechat-miniapp", Intent: model.AuthFlowIntentCheckout, UserId: owner.Id,
 	})

@@ -10,11 +10,29 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
+  clearRememberedMiniAppCheckoutTicket,
   consumeMiniAppCheckoutBootstrapTicket,
   consumeMiniAppCheckoutURL,
   createMiniAppCheckoutConfirmationPayload,
+  getRememberedMiniAppCheckoutTicket,
   miniAppCheckoutTicketBootstrapWindowKey,
+  rememberMiniAppCheckoutTicket,
 } from './checkout-ticket'
+
+function createSessionStorage() {
+  const values = new Map<string, string>()
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value)
+    },
+    removeItem(key: string) {
+      values.delete(key)
+    },
+  }
+}
 
 describe('mini program browser checkout ticket handling', () => {
   test('captures the checkout ticket from a fragment without retaining it in the visible URL', () => {
@@ -71,5 +89,20 @@ describe('mini program browser checkout ticket handling', () => {
       false
     )
     assert.equal(consumeMiniAppCheckoutBootstrapTicket(handoff), null)
+  })
+
+  test('retains an opaque ticket through a browser auth navigation without a URL', () => {
+    const storage = createSessionStorage()
+
+    assert.equal(
+      rememberMiniAppCheckoutTicket('checkout-flow-ticket', storage),
+      'checkout-flow-ticket'
+    )
+    assert.equal(
+      getRememberedMiniAppCheckoutTicket(storage),
+      'checkout-flow-ticket'
+    )
+    clearRememberedMiniAppCheckoutTicket(storage)
+    assert.equal(getRememberedMiniAppCheckoutTicket(storage), null)
   })
 })

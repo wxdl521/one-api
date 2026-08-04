@@ -19,6 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 import type { AuthUser } from '@/stores/auth-store'
 
 const allowedRedirectProtocols = new Set(['http:', 'https:'])
+const authRedirectSessionStorageKey = '__theOneAuthRedirect'
+
+type SessionStorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+
+function getSessionStorage(): SessionStorageLike | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
 
 export function getSavedLanguage(user: AuthUser): string | undefined {
   if (typeof user.language === 'string') {
@@ -77,4 +89,39 @@ export function sanitizeAuthRedirect(
   }
 
   return `${redirectURL.pathname}${redirectURL.search}${redirectURL.hash}`
+}
+
+// Keep a trusted local return path across navigation-only authentication
+// steps. It intentionally stores no authentication or checkout credential.
+export function rememberAuthRedirect(
+  value: unknown,
+  origin: string,
+  storage: SessionStorageLike | null = getSessionStorage()
+): void {
+  const redirect = sanitizeAuthRedirect(value, origin)
+  if (redirect === null || storage === null) return
+  try {
+    storage.setItem(authRedirectSessionStorageKey, redirect)
+  } catch {
+    // Browser storage can be unavailable in restrictive WebViews.
+  }
+}
+
+export function takeRememberedAuthRedirect(
+  explicitValue: unknown,
+  origin: string,
+  storage: SessionStorageLike | null = getSessionStorage()
+): string | null {
+  const explicitRedirect = sanitizeAuthRedirect(explicitValue, origin)
+  if (storage === null) return explicitRedirect
+
+  let rememberedRedirect: string | null = null
+  try {
+    rememberedRedirect = storage.getItem(authRedirectSessionStorageKey)
+    storage.removeItem(authRedirectSessionStorageKey)
+  } catch {
+    return explicitRedirect
+  }
+
+  return explicitRedirect ?? sanitizeAuthRedirect(rememberedRedirect, origin)
 }

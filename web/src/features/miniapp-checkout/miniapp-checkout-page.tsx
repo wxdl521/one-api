@@ -25,9 +25,12 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  clearRememberedMiniAppCheckoutTicket,
   consumeMiniAppCheckoutBootstrapTicket,
   consumeMiniAppCheckoutURL,
   createMiniAppCheckoutConfirmationPayload,
+  getRememberedMiniAppCheckoutTicket,
+  rememberMiniAppCheckoutTicket,
 } from './lib/checkout-ticket'
 
 let browserCheckoutTicket: string | null | undefined
@@ -47,6 +50,22 @@ function consumeBootstrapCheckoutTicket() {
   )
 }
 
+function getBrowserSessionStorage(): Storage | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+function retainCheckoutTicket(checkoutTicket: string): string {
+  return (
+    rememberMiniAppCheckoutTicket(checkoutTicket, getBrowserSessionStorage()) ??
+    checkoutTicket
+  )
+}
+
 // This runs during module evaluation, before React renders this route or any
 // route-level instrumentation can observe the handoff URL. The synchronous
 // head bootstrap has already removed the fragment and kept the ticket in
@@ -55,19 +74,31 @@ if (
   typeof window !== 'undefined' &&
   window.location.pathname === '/miniapp-checkout'
 ) {
-  browserCheckoutTicket =
+  const checkoutTicket =
     consumeBootstrapCheckoutTicket() ?? captureCheckoutTicketFromLocation()
+  if (checkoutTicket !== null) {
+    browserCheckoutTicket = retainCheckoutTicket(checkoutTicket)
+  }
 }
 
 function checkoutTicketFromMemory() {
   if (browserCheckoutTicket !== undefined) return browserCheckoutTicket
-  browserCheckoutTicket =
+  const checkoutTicket =
     consumeBootstrapCheckoutTicket() ?? captureCheckoutTicketFromLocation()
+  browserCheckoutTicket =
+    checkoutTicket === null
+      ? getRememberedMiniAppCheckoutTicket(getBrowserSessionStorage())
+      : retainCheckoutTicket(checkoutTicket)
   return browserCheckoutTicket
 }
 
 function isAllowedCheckoutPath(value: unknown): value is string {
-  if (value === '/subscriptions') return true
+  if (
+    typeof value === 'string' &&
+    /^\/wallet\?purchase_plan_id=[1-9]\d*$/.test(value)
+  ) {
+    return true
+  }
   return typeof value === 'string' && /^\/products\/[1-9]\d*$/.test(value)
 }
 
@@ -105,6 +136,7 @@ export function MiniAppCheckoutPage() {
         throw new Error('mini app checkout confirmation failed')
       }
       browserCheckoutTicket = null
+      clearRememberedMiniAppCheckoutTicket(getBrowserSessionStorage())
       return checkoutPath
     },
   })

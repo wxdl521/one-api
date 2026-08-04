@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import { clearAuthentication, isAuthBundle } from '@/lib/api'
 
 import { createOAuthFlow, logout, telegramLogin } from '../api'
+import { rememberAuthRedirect } from '../lib/auth-redirect'
 import {
   buildGitHubOAuthUrl,
   buildDiscordOAuthUrl,
@@ -67,6 +68,10 @@ export function useOAuthLogin(
     clearAuthentication()
   }
 
+  const rememberRedirect = () => {
+    rememberAuthRedirect(redirectTo, window.location.origin)
+  }
+
   const handleGitHubLogin = async () => {
     if (!status?.github_client_id) return
     if (githubButtonDisabled) return
@@ -88,6 +93,7 @@ export function useOAuthLogin(
     }, 20000)
 
     try {
+      rememberRedirect()
       await resetSession()
       const state = await createOAuthFlow('github', 'login')
 
@@ -109,6 +115,7 @@ export function useOAuthLogin(
 
     setIsLoading(true)
     try {
+      rememberRedirect()
       await resetSession()
       const state = await createOAuthFlow('discord', 'login')
 
@@ -126,6 +133,7 @@ export function useOAuthLogin(
 
     setIsLoading(true)
     try {
+      rememberRedirect()
       await resetSession()
       const state = await createOAuthFlow('oidc', 'login')
 
@@ -147,6 +155,7 @@ export function useOAuthLogin(
 
     setIsLoading(true)
     try {
+      rememberRedirect()
       await resetSession()
       const state = await createOAuthFlow('linuxdo', 'login')
 
@@ -167,6 +176,7 @@ export function useOAuthLogin(
 
     setIsLoading(true)
     try {
+      rememberRedirect()
       await resetSession()
       setIsTelegramDialogOpen(true)
     } catch {
@@ -208,6 +218,7 @@ export function useOAuthLogin(
 
     setIsLoading(true)
     try {
+      rememberRedirect()
       await resetSession()
       const state = await createOAuthFlow(provider.slug, 'login')
 

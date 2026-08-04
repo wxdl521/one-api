@@ -250,7 +250,10 @@ func ConfirmMiniAppBrowserCheckout(checkoutTicket string, browserIdentity AuthId
 		}
 		switch payload.TargetType {
 		case miniAppCheckoutPlan:
-			confirmation.CheckoutPath = "/subscriptions"
+			confirmation.CheckoutPath = fmt.Sprintf(
+				"/wallet?purchase_plan_id=%d",
+				payload.TargetID,
+			)
 		case miniAppCheckoutProduct:
 			confirmation.CheckoutPath = fmt.Sprintf("/products/%d", payload.TargetID)
 		default:

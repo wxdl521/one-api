@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -64,6 +64,7 @@ import type { PaymentMethod, TopupInfo } from '../types'
 
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
+  initialPlanID?: number
   onAvailabilityChange?: (available: boolean) => void
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
@@ -95,6 +96,7 @@ function getBillingPreferenceLabel(
 
 export function SubscriptionPlansCard({
   topupInfo,
+  initialPlanID,
   onAvailabilityChange,
   userQuota,
   onPurchaseSuccess,
@@ -117,6 +119,7 @@ export function SubscriptionPlansCard({
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
+  const initialPlanOpened = useRef(false)
 
   const enableStripe = !!topupInfo?.enable_stripe_topup
   const enableCreem = !!topupInfo?.enable_creem_topup
@@ -164,6 +167,15 @@ export function SubscriptionPlansCard({
     }
     init()
   }, [fetchPlans, fetchSelfSubscription])
+
+  useEffect(() => {
+    if (initialPlanID === undefined || initialPlanOpened.current) return
+    const plan = plans.find((candidate) => candidate.plan.id === initialPlanID)
+    if (!plan) return
+    initialPlanOpened.current = true
+    setSelectedPlan(plan)
+    setPurchaseOpen(true)
+  }, [initialPlanID, plans])
 
   const handleRefresh = async () => {
     setRefreshing(true)

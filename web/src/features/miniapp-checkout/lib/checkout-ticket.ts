@@ -8,8 +8,11 @@ License, or (at your option) any later version.
 */
 const maxCheckoutTicketLength = 512
 const miniAppCheckoutPath = '/miniapp-checkout'
+const miniAppCheckoutTicketSessionStorageKey = '__theOneMiniAppCheckoutTicket'
 export const miniAppCheckoutTicketBootstrapWindowKey =
   '__theOneMiniAppCheckoutTicket'
+
+type SessionStorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
 export interface MiniAppCheckoutURLCapture {
   checkoutTicket: string | null
@@ -40,6 +43,52 @@ export function consumeMiniAppCheckoutBootstrapTicket(
     createMiniAppCheckoutConfirmationPayload(checkoutTicket)?.checkout_ticket ??
     null
   )
+}
+
+export function rememberMiniAppCheckoutTicket(
+  checkoutTicket: string,
+  storage: SessionStorageLike | null
+): string | null {
+  const payload = createMiniAppCheckoutConfirmationPayload(checkoutTicket)
+  if (payload === null) return null
+  if (storage === null) return payload.checkout_ticket
+  try {
+    storage.setItem(
+      miniAppCheckoutTicketSessionStorageKey,
+      payload.checkout_ticket
+    )
+  } catch {
+    // Continue in memory when restrictive browser storage rejects writes.
+  }
+  return payload.checkout_ticket
+}
+
+export function getRememberedMiniAppCheckoutTicket(
+  storage: SessionStorageLike | null
+): string | null {
+  if (storage === null) return null
+  try {
+    const checkoutTicket = storage.getItem(
+      miniAppCheckoutTicketSessionStorageKey
+    )
+    return checkoutTicket
+      ? (createMiniAppCheckoutConfirmationPayload(checkoutTicket)
+          ?.checkout_ticket ?? null)
+      : null
+  } catch {
+    return null
+  }
+}
+
+export function clearRememberedMiniAppCheckoutTicket(
+  storage: SessionStorageLike | null
+): void {
+  if (storage === null) return
+  try {
+    storage.removeItem(miniAppCheckoutTicketSessionStorageKey)
+  } catch {
+    // Storage cleanup is best-effort; the server still enforces one-time use.
+  }
 }
 
 export function consumeMiniAppCheckoutURL(
