@@ -337,7 +337,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 				theOneError: types.NewError(errors.New("invalid embedding request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
-	case relayconstant.RelayModeImagesGenerations:
+	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
 		// 图像生成请求 - request 已经是正确的类型
 		if imageReq, ok := request.(*dto.ImageRequest); ok {
 			convertedRequest, err = adaptor.ConvertImageRequest(c, info, *imageReq)
