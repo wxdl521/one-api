@@ -158,7 +158,7 @@ type SubscriptionPlan struct {
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
 	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
-	Enabled   bool `json:"enabled" gorm:"default:true"`
+	Enabled   bool `json:"enabled"`
 	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
 
 	AllowBalancePay *bool `json:"allow_balance_pay"`
@@ -194,6 +194,11 @@ func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	p.CreatedAt = now
 	p.UpdatedAt = now
+	// New plans are always enabled. This used to be gorm:"default:true", which
+	// made GORM skip the zero value on insert and let the DB default win, so a
+	// create could never persist enabled=false; keep that behavior in code to
+	// avoid boolean-default AutoMigrate churn across MySQL/PostgreSQL.
+	p.Enabled = true
 	return nil
 }
 

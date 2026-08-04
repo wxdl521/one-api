@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/the-one/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhook"
@@ -24,6 +25,41 @@ import (
 )
 
 var stripeAdaptor = &StripeAdaptor{}
+
+// maxTopupAmount 单笔充值数量上界（Stripe/Waffo 共用），防止异常大额订单进入计费链路。
+const maxTopupAmount = int64(10000)
+
+// topupUnitCap 返回单笔充值（归一化后的单位数量）允许的最大值。除业务上界外，
+// 还必须保证结算配额 amount*QuotaPerUnit 不超过 int32 配额列上界，否则订单会
+// 通过请求校验、被支付方扣款，却在结算时因溢出饱和被拒——钱扣了配额发不出。
+// 取业务上界与 int32 安全上界中的较小者，在扣款前拒掉超额订单。
+func topupUnitCap() int64 {
+	quotaSafeCap := int64(float64(common.MaxQuota) / common.QuotaPerUnit)
+	if quotaSafeCap < maxTopupAmount {
+		return quotaSafeCap
+	}
+	return maxTopupAmount
+}
+
+// settlementQuotaOverflows reports whether crediting settlementAmount (the exact
+// value a provider settles through amountToQuotaChecked — Stripe's ratio-adjusted
+// Money, other providers' unit Amount) would exceed the int32 quota column. Used
+// to reject before payment capture, mirroring the settlement overflow boundary.
+func settlementQuotaOverflows(settlementAmount decimal.Decimal) bool {
+	return settlementAmount.Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		GreaterThanOrEqual(decimal.NewFromInt(int64(common.MaxQuota)))
+}
+
+// normalizeTopUpUnits converts a request amount from the configured display type
+// to billing units: in TOKENS mode the client sends a token count, which is
+// divided by QuotaPerUnit to get the USD-equivalent unit amount every settle
+// path bills on. Shared by the top-up entry points so they agree on one rounding.
+func normalizeTopUpUnits(amount int64) int64 {
+	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
+		return amount
+	}
+	return decimal.NewFromInt(amount).Div(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+}
 
 // StripePayRequest represents a payment request for Stripe checkout.
 type StripePayRequest struct {
@@ -70,8 +106,12 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup()), "data": 10})
 		return
 	}
-	if req.Amount > 10000 {
-		c.JSON(http.StatusOK, gin.H{"message": "充值数量不能大于 10000", "data": 10})
+	// Token 显示模式下 req.Amount 是 token 数，需先归一化为等价美元数量再做上界校验，
+	// 否则 token 模式下合法充值（最小 $1=500000 tokens 已 > 10000）会被全部误拒。
+	// 下界仍走 getStripeMinTopup（token 口径正确）。
+	normalizedAmount := normalizeTopUpUnits(req.Amount)
+	if normalizedAmount > topupUnitCap() {
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("充值数量不能大于 %d", topupUnitCap()), "data": 10})
 		return
 	}
 
@@ -86,12 +126,29 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	}
 
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
-	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
+	user, err := model.GetUserById(id, false)
+	if err != nil || user == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "用户不存在"})
+		return
+	}
+	// Money is the USD-equivalent settlement basis, so charge the ratio on the
+	// normalized amount (in TOKENS display mode req.Amount is a token count);
+	// using the raw amount would make Money a token count and the settlement quota
+	// (Money x QuotaPerUnit) wrong by a QuotaPerUnit factor.
+	chargedMoney := GetChargedAmount(float64(normalizedAmount), *user)
+	// Stripe settles on Money (= amount x topUpGroupRatio); a group ratio > 1 can
+	// push it past the int32 quota ceiling even when the unit cap passed, so guard
+	// the exact settlement basis before creating the Checkout Session.
+	if settlementQuotaOverflows(decimal.NewFromFloat(chargedMoney)) {
+		c.JSON(http.StatusOK, gin.H{"message": "充值金额过大", "data": 10})
+		return
+	}
 
 	reference := fmt.Sprintf("the-one-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
+	// Checkout 数量的归一化在 stripeCheckoutParams 内完成（单位口径与报价/结算一致，
+	// 见该函数注释），这里传原始 req.Amount。
 	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 创建 Checkout Session 失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceId, req.Amount, err.Error()))
@@ -159,8 +216,9 @@ func StripeWebhook(c *gin.Context) {
 		return
 	}
 
+	// 验签前不落全量 body/签名，避免未验证内容进 INFO 日志
 	signature := c.GetHeader("Stripe-Signature")
-	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.Request.RequestURI, c.ClientIP(), signature, string(payload)))
+	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 收到请求 path=%q client_ip=%s body_len=%d", c.Request.RequestURI, c.ClientIP(), len(payload)))
 	event, err := webhook.ConstructEventWithOptions(payload, signature, setting.StripeWebhookSecret, webhook.ConstructEventOptions{
 		IgnoreAPIVersionMismatch: true,
 	})
@@ -173,6 +231,7 @@ func StripeWebhook(c *gin.Context) {
 
 	callerIp := c.ClientIP()
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 验签成功 event_type=%s client_ip=%s path=%q", string(event.Type), callerIp, c.Request.RequestURI))
+	logger.LogDebug(ctx, fmt.Sprintf("Stripe webhook 验签通过 body=%q", string(payload)))
 	switch event.Type {
 	case stripe.EventTypeCheckoutSessionCompleted:
 		sessionCompleted(ctx, event, callerIp)
@@ -256,6 +315,9 @@ func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, callerIp
 }
 
 // fulfillOrder is the shared logic for crediting quota after payment is confirmed.
+// 金额比对说明：Stripe 实付金额（amount_total）由 Stripe 侧 Price 对象单价 × 数量决定，
+// 本地 Money 存的是分组倍率换算后的单位数，两者不在同一量纲，本地无法严格比对；
+// 金额防护依赖服务端创建 Checkout Session（数量/价格均服务端指定）+ webhook 验签。
 func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, customerId string, callerIp string) {
 	if len(referenceId) == 0 {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe 完成订单时缺少订单号 client_ip=%s", callerIp))
@@ -338,13 +400,14 @@ func sessionExpired(ctx context.Context, event stripe.Event) {
 //   - cancelURL: custom URL to redirect when payment is canceled (empty for default)
 //
 // Returns the checkout session URL or an error if the session creation fails.
-func genStripeLink(referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string) (string, error) {
-	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
-		return "", fmt.Errorf("无效的Stripe API密钥")
-	}
-
-	stripe.Key = setting.StripeApiSecret
-
+// stripeCheckoutParams builds the Checkout Session params for a top-up request.
+// Quantity 在此处归一化：TOKENS 显示模式下 requestAmount 是 token 数，直接作为
+// Quantity 会对固定单价 StripePriceId 多收 QuotaPerUnit 倍（R5 缺陷）；归一化后
+// Checkout 数量与报价 getStripePayMoney、结算 Money 的**单位口径**一致。
+// 已知例外（存档，非本函数职责）：topupGroupRatio/AmountDiscount 作用于报价与
+// 结算 Money，但固定 Price 的 Checkout 单价无法承载该系数——非默认 ratio 下
+// 实付卡账与报价/入账存在系数级偏差，默认配置（全部 ratio=1）无影响。
+func stripeCheckoutParams(referenceId string, customerId string, email string, requestAmount int64, successURL string, cancelURL string) *stripe.CheckoutSessionParams {
 	// Use custom URLs if provided, otherwise use defaults
 	if successURL == "" {
 		successURL = paymentReturnPath("/usage-logs")
@@ -360,7 +423,7 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(setting.StripePriceId),
-				Quantity: stripe.Int64(amount),
+				Quantity: stripe.Int64(normalizeTopUpUnits(requestAmount)),
 			},
 		},
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
@@ -377,7 +440,17 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		params.Customer = stripe.String(customerId)
 	}
 
-	result, err := session.New(params)
+	return params
+}
+
+func genStripeLink(referenceId string, customerId string, email string, requestAmount int64, successURL string, cancelURL string) (string, error) {
+	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+		return "", fmt.Errorf("无效的Stripe API密钥")
+	}
+
+	stripe.Key = setting.StripeApiSecret
+
+	result, err := session.New(stripeCheckoutParams(referenceId, customerId, email, requestAmount, successURL, cancelURL))
 	if err != nil {
 		return "", err
 	}

@@ -47,6 +47,7 @@ import {
   ENDPOINT_OPTIONS,
   MODELS_DEV_PRESET_ID,
   OFFICIAL_CHANNEL_ID,
+  SYNTHESIZED_PRESETS,
 } from './constants'
 
 type ChannelSelectorDialogProps = {
@@ -62,6 +63,10 @@ type ChannelSelectorDialogProps = {
 
 // Synthesized presets from `controller/ratio_sync.go` always carry stable
 // negative IDs, so matching by ID alone is reliable and self-documenting.
+const PRESET_LABELS_BY_ID: Record<number, string> = Object.fromEntries(
+  SYNTHESIZED_PRESETS.map((preset) => [preset.id, preset.label])
+)
+
 function isOfficialChannel(channel: UpstreamChannel): boolean {
   return (
     channel.id === OFFICIAL_CHANNEL_ID || channel.id === MODELS_DEV_PRESET_ID
@@ -150,10 +155,14 @@ export function ChannelSelectorDialog({
           const name = row.getValue('name') as string
           const channel = row.original
           const isOfficial = isOfficialChannel(channel)
+          // Synthesized presets carry a fixed backend name; show a translated
+          // label instead. Real channels keep their user-defined name.
+          const presetLabel = PRESET_LABELS_BY_ID[channel.id]
+          const displayName = presetLabel ? t(presetLabel) : name
 
           return (
             <div className='flex items-center gap-2'>
-              <span className='font-medium'>{name}</span>
+              <span className='font-medium'>{displayName}</span>
               {isOfficial && (
                 <StatusBadge
                   label={t('Official')}

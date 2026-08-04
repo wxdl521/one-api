@@ -42,6 +42,34 @@ export const MODELS_DEV_PRESET_NAME = 'models.dev 价格预设'
 export const MODELS_DEV_PRESET_BASE_URL = 'https://models.dev'
 export const MODELS_DEV_PRESET_ENDPOINT = 'https://models.dev/api.json'
 
+// User-facing labels for the synthesized presets above. These are i18n keys
+// (English source strings) for display only; wire matching stays on the
+// stable IDs / *_NAME literals.
+export const OFFICIAL_CHANNEL_LABEL = 'Official ratio preset'
+export const MODELS_DEV_PRESET_LABEL = 'models.dev price preset'
+
+// Single source of truth for the synthesized presets from
+// `controller/ratio_sync.go`. Both consumers derive from this list so adding a
+// preset only touches one place: the channel selector matches by `id`, while
+// ratio-sync display matches by the `name(id)` source string. `label` is an
+// i18n key rendered via `t()`.
+export const SYNTHESIZED_PRESETS: {
+  id: number
+  name: string
+  label: string
+}[] = [
+  {
+    id: OFFICIAL_CHANNEL_ID,
+    name: OFFICIAL_CHANNEL_NAME,
+    label: OFFICIAL_CHANNEL_LABEL,
+  },
+  {
+    id: MODELS_DEV_PRESET_ID,
+    name: MODELS_DEV_PRESET_NAME,
+    label: MODELS_DEV_PRESET_LABEL,
+  },
+]
+
 export const OPENROUTER_ENDPOINT = 'openrouter'
 
 // Backend channel type for OpenRouter (see constant/channel.go: ChannelTypeOpenRouter = 20)

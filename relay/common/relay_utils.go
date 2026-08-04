@@ -145,12 +145,30 @@ func validatePrompt(prompt string) *dto.TaskError {
 // overflow quota calculation into a negative charge.
 const MaxTaskDurationSeconds = 3600
 
-func validateTaskDurationBounds(req TaskSubmitReq) *dto.TaskError {
-	seconds := req.Duration
-	if seconds == 0 && req.Seconds != "" {
-		seconds, _ = strconv.Atoi(req.Seconds)
+// ResolveTaskDurationSeconds resolves the effective video duration: the string
+// Seconds field takes priority and Duration is the fallback. Bounds validation
+// and billing MUST share this resolution, otherwise a request could pass
+// validation on one field while being billed on the other.
+func ResolveTaskDurationSeconds(req TaskSubmitReq) int {
+	seconds, _ := strconv.Atoi(req.Seconds)
+	if seconds == 0 {
+		seconds = req.Duration
 	}
-	if seconds < 0 || seconds > MaxTaskDurationSeconds {
+	return seconds
+}
+
+func validateTaskDurationBounds(req TaskSubmitReq) *dto.TaskError {
+	// Bound BOTH the string Seconds field and the int Duration field
+	// independently. ResolveTaskDurationSeconds prefers Seconds for billing, but
+	// several adaptors (hailuo, vidu, kling, ali, jimeng) read req.Duration
+	// directly to build the upstream request and its charge. Validating only the
+	// resolved value lets {"seconds":"5","duration":999999} pass while the adaptor
+	// bills the oversized duration, so any out-of-range value on either field is a
+	// 400. strconv.Atoi returns 0 for empty and clamps int64 overflow to
+	// MaxInt64/MinInt64, both caught by the bound check below.
+	seconds, _ := strconv.Atoi(req.Seconds)
+	if seconds < 0 || seconds > MaxTaskDurationSeconds ||
+		req.Duration < 0 || req.Duration > MaxTaskDurationSeconds {
 		return createTaskError(fmt.Errorf("seconds must be between 1 and %d", MaxTaskDurationSeconds), "invalid_seconds", http.StatusBadRequest, true)
 	}
 	return nil
@@ -211,10 +229,7 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 	prompt = req.Prompt
 	model = req.Model
 	size = req.Size
-	seconds, _ = strconv.Atoi(req.Seconds)
-	if seconds == 0 {
-		seconds = req.Duration
-	}
+	seconds = ResolveTaskDurationSeconds(req)
 	if req.InputReference != "" {
 		req.Images = []string{req.InputReference}
 	} else if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {

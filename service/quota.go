@@ -259,24 +259,29 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 }
 
 func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData) int {
-	if priceData.CacheCreationRatio == 1 {
-		return 0
-	}
 	quotaPrice := priceData.ModelRatio / common.QuotaPerUnit
 	promptCacheCreatePrice := quotaPrice * priceData.CacheCreationRatio
 	promptCacheReadPrice := quotaPrice * priceData.CacheRatio
 	completionPrice := quotaPrice * priceData.CompletionRatio
+
+	// A near-zero divisor (CacheCreationRatio ~= 1 or ModelRatio ~= 0) would
+	// explode the estimate; treat it as "no cache creation tokens" and let the
+	// caller keep its existing guards.
+	divisor := promptCacheCreatePrice - quotaPrice
+	if math.Abs(divisor) < 1e-15 {
+		return 0
+	}
 
 	cost, _ := usage.Cost.(float64)
 	totalPromptTokens := float64(usage.PromptTokens)
 	completionTokens := float64(usage.CompletionTokens)
 	promptCacheReadTokens := float64(usage.PromptTokensDetails.CachedTokens)
 
-	return int(math.Round((cost -
+	return common.QuotaRound((cost -
 		totalPromptTokens*quotaPrice +
 		promptCacheReadTokens*(quotaPrice-promptCacheReadPrice) -
 		completionTokens*completionPrice) /
-		(promptCacheCreatePrice - quotaPrice)))
+		divisor)
 }
 
 func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent string) {

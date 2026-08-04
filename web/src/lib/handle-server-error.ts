@@ -24,7 +24,7 @@ import { getServerErrorMessageKey } from '@/lib/server-error-message'
 
 export function handleServerError(error: unknown) {
   // eslint-disable-next-line no-console
-  console.log(error)
+  if (import.meta.env.DEV) console.log(error)
 
   let errMsg = i18next.t('Something went wrong!')
 

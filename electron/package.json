@@ -1,6 +1,6 @@
 {
   "name": "the-one-electron",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "The One - AI Model Gateway Desktop Application",
   "main": "main.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
+    "build:remote:win": "electron-builder --win nsis",
     "build:linux": "electron-builder --linux"
   },
   "keywords": [
@@ -38,6 +39,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "offline.html",
       "icon.png",
       "tray-iconTemplate.png",
       "tray-iconTemplate@2x.png",
@@ -56,10 +58,6 @@
         "zip"
       ],
       "extraResources": [
-        {
-          "from": "../the-one",
-          "to": "bin/the-one"
-        },
         {
           "from": "../LICENSE",
           "to": "licenses/LICENSE"
@@ -84,15 +82,11 @@
     },
     "win": {
       "icon": "icon.png",
+      "signAndEditExecutable": false,
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "extraResources": [
-        {
-          "from": "../the-one.exe",
-          "to": "bin/the-one.exe"
-        },
         {
           "from": "../LICENSE",
           "to": "licenses/LICENSE"
@@ -123,10 +117,6 @@
       ],
       "category": "Development",
       "extraResources": [
-        {
-          "from": "../the-one",
-          "to": "bin/the-one"
-        },
         {
           "from": "../LICENSE",
           "to": "licenses/LICENSE"

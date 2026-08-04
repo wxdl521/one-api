@@ -7,7 +7,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/the-one/common"
@@ -106,12 +105,14 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
-	seconds, _ := strconv.Atoi(req.Seconds)
-	if seconds == 0 {
-		seconds = req.Duration
-	}
+	// 与校验器共用同一字段优先级，防止校验与计费各看一个字段被绕过
+	seconds := relaycommon.ResolveTaskDurationSeconds(req)
 	if seconds <= 0 {
 		seconds = 4
+	}
+	// 防御性钳制：即使校验被绕过，计费乘数也不越界
+	if seconds > relaycommon.MaxTaskDurationSeconds {
+		seconds = relaycommon.MaxTaskDurationSeconds
 	}
 
 	size := req.Size

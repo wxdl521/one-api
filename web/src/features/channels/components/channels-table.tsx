@@ -24,7 +24,7 @@ import type {
   SortingState,
   Row,
 } from '@tanstack/react-table'
-import { Eye, EyeOff } from 'lucide-react'
+import { CircleAlert, Eye, EyeOff } from 'lucide-react'
 import { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -37,6 +37,7 @@ import {
   useDataTable,
   useDataTableViewMode,
 } from '@/components/data-table'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -48,7 +49,12 @@ import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
-import { getAgentPlanUsage, getChannels, searchChannels, getGroups } from '../api'
+import {
+  getAgentPlanUsage,
+  getChannels,
+  searchChannels,
+  getGroups,
+} from '../api'
 import {
   DEFAULT_PAGE_SIZE,
   CHANNEL_STATUS,
@@ -227,7 +233,7 @@ export function ChannelsTable() {
 
   // Fetch channels data
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: channelsQueryKeys.list({
       keyword: globalFilter,
       model: modelFilter,
@@ -430,6 +436,21 @@ export function ChannelsTable() {
       label: sensitiveVisible ? option.label : '••••',
     })),
   ]
+
+  if (isError) {
+    return (
+      <Alert variant='destructive'>
+        <CircleAlert />
+        <AlertTitle>{t('Failed to load channels')}</AlertTitle>
+        <AlertDescription className='flex flex-wrap items-center gap-3'>
+          {t('Please try again later.')}
+          <Button variant='outline' size='sm' onClick={() => refetch()}>
+            {t('Retry')}
+          </Button>
+        </AlertDescription>
+      </Alert>
+    )
+  }
 
   return (
     <DataTablePage
