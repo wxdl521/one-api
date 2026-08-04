@@ -51,4 +51,7 @@ func cleanupAuthArtifacts() {
 	if err := model.ExpireAndDeleteMiniAppBindings(now); err != nil {
 		common.SysError("failed to expire and delete mini app bindings: " + err.Error())
 	}
+	if err := model.DeleteExpiredMiniTextTestAttempts(now); err != nil {
+		common.SysError("failed to delete expired mini text test attempts: " + err.Error())
+	}
 }

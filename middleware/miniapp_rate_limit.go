@@ -9,6 +9,9 @@ const (
 	MiniAppAuthenticatedRateLimitMark   = "MU"
 	MiniAppAuthenticatedRateLimitMax    = 30
 	MiniAppAuthenticatedRateLimitWindow = 60
+	MiniAppTextTestRateLimitMark        = "MT"
+	MiniAppTextTestRateLimitMax         = 6
+	MiniAppTextTestRateLimitWindow      = 60
 )
 
 // MiniAppAnonymousIPRateLimit limits code exchange and other unauthenticated
@@ -28,5 +31,15 @@ func MiniAppAuthenticatedUserRateLimit() func(c *gin.Context) {
 		MiniAppAuthenticatedRateLimitMax,
 		MiniAppAuthenticatedRateLimitWindow,
 		MiniAppAuthenticatedRateLimitMark,
+	)
+}
+
+// MiniAppTextTestUserRateLimit limits a costly operation separately from the
+// ordinary authenticated BFF request budget.
+func MiniAppTextTestUserRateLimit() func(c *gin.Context) {
+	return userRateLimitFactory(
+		MiniAppTextTestRateLimitMax,
+		MiniAppTextTestRateLimitWindow,
+		MiniAppTextTestRateLimitMark,
 	)
 }

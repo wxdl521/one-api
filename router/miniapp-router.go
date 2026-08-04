@@ -39,6 +39,14 @@ func SetMiniAppRouter(router *gin.Engine) {
 			protected.PATCH("/tokens/:id/status", middleware.MiniAppTokenRequestBodyLimit(), middleware.CriticalRateLimit(), controller.MiniAppUpdateTokenStatus)
 			protected.DELETE("/tokens/:id", middleware.CriticalRateLimit(), controller.MiniAppRevokeToken)
 		}
+
+		textTests := miniAppRouter.Group("/")
+		textTests.Use(middleware.MiniAppTextTestFeatureGate(), middleware.MiniAppAuth(), middleware.MiniAppAuthenticatedUserRateLimit())
+		{
+			textTests.GET("/text-test/models", controller.MiniAppListTextTestModels)
+			textTests.POST("/text-tests", middleware.MiniAppTextTestRequestBodyLimit(), middleware.MiniAppTextTestUserRateLimit(), controller.MiniAppStartTextTest)
+			textTests.GET("/text-tests/:request_id", controller.MiniAppTextTestStatus)
+		}
 	}
 
 	browserBinding := router.Group("/api/miniapp/bindings")

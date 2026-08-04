@@ -145,6 +145,30 @@ func TestMiniAppAuthRejectsRequestsWhenTheFeatureIsDisabled(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "MINIAPP_DISABLED")
 }
 
+func TestMiniAppTextTestFeatureGateRunsBeforeSessionAuthentication(t *testing.T) {
+	setupMiniAppAuthMiddlewareTest(t)
+	common.OptionMapRWMutex.Lock()
+	common.MiniProgramTextTestEnabled = false
+	common.OptionMapRWMutex.Unlock()
+
+	router := gin.New()
+	router.GET("/text-test", MiniAppTextTestFeatureGate(), MiniAppAuth(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/text-test", nil))
+	require.Equal(t, http.StatusNotFound, response.Code)
+	assert.Contains(t, response.Body.String(), "MINIAPP_TEXT_TEST_DISABLED")
+
+	common.OptionMapRWMutex.Lock()
+	common.MiniProgramTextTestEnabled = true
+	common.OptionMapRWMutex.Unlock()
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/text-test", nil))
+	require.Equal(t, http.StatusUnauthorized, response.Code)
+	assert.Contains(t, response.Body.String(), "MINIAPP_SESSION_INVALID")
+}
+
 func TestMiniAppBindingRequestBodyLimitRejectsOversizedRequestsBeforeHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

@@ -160,8 +160,16 @@ func ConfirmMiniAppBrowserBinding(c *gin.Context) {
 }
 
 func decodeMiniAppRequest(c *gin.Context, allowedFields ...string) (map[string]json.RawMessage, bool) {
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, miniAppRequestMaxBytes+1))
-	if err != nil || len(body) > miniAppRequestMaxBytes {
+	return decodeMiniAppRequestWithMaxBytes(c, miniAppRequestMaxBytes, allowedFields...)
+}
+
+func decodeMiniAppRequestWithMaxBytes(c *gin.Context, maxBytes int, allowedFields ...string) (map[string]json.RawMessage, bool) {
+	if maxBytes <= 0 {
+		writeMiniAppInvalidRequest(c)
+		return nil, false
+	}
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, int64(maxBytes)+1))
+	if err != nil || len(body) > maxBytes {
 		writeMiniAppInvalidRequest(c)
 		return nil, false
 	}

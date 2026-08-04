@@ -525,8 +525,18 @@ func MiniAppAuthErrorCode(err error) (int, string) {
 	switch {
 	case errors.Is(err, ErrMiniProgramDisabled):
 		return http.StatusNotFound, "MINIAPP_DISABLED"
+	case errors.Is(err, ErrMiniProgramTextTestDisabled):
+		return http.StatusNotFound, "MINIAPP_TEXT_TEST_DISABLED"
 	case errors.Is(err, ErrMiniAppConfiguration):
 		return http.StatusServiceUnavailable, "MINIAPP_CONFIGURATION_ERROR"
+	case errors.Is(err, ErrMiniTextTestInvalid):
+		return http.StatusBadRequest, "MINIAPP_TEXT_TEST_INVALID"
+	case errors.Is(err, ErrMiniTextTestRequestConflict):
+		return http.StatusConflict, "MINIAPP_TEXT_TEST_REQUEST_CONFLICT"
+	case errors.Is(err, ErrMiniTextTestModelUnavailable):
+		return http.StatusForbidden, "MINIAPP_TEXT_TEST_MODEL_UNAVAILABLE"
+	case errors.Is(err, ErrMiniTextTestNotFound):
+		return http.StatusNotFound, "MINIAPP_TEXT_TEST_NOT_FOUND"
 	case errors.Is(err, ErrWechatMiniCodeInvalid):
 		return http.StatusBadRequest, "MINIAPP_CODE_INVALID"
 	case errors.Is(err, ErrWechatMiniProviderRejected):

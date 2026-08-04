@@ -180,7 +180,11 @@ func TestExchangeWechatMiniCodeRejectsRedirectsBeforeSecretQueryCanLeaveProvider
 }
 
 func TestMiniAppAuthErrorCodeMapsProviderFailuresToSafeBFFResponses(t *testing.T) {
-	status, code := MiniAppAuthErrorCode(ErrWechatMiniProviderRejected)
+	status, code := MiniAppAuthErrorCode(ErrMiniProgramTextTestDisabled)
+	assert.Equal(t, http.StatusNotFound, status)
+	assert.Equal(t, "MINIAPP_TEXT_TEST_DISABLED", code)
+
+	status, code = MiniAppAuthErrorCode(ErrWechatMiniProviderRejected)
 	assert.Equal(t, http.StatusUnauthorized, status)
 	assert.Equal(t, "MINIAPP_CODE_REJECTED", code)
 	assert.NotContains(t, code, "session")

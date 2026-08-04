@@ -16,11 +16,27 @@ const miniAppBindingRequestBodyMaxBytes = 8 << 10
 
 const miniAppTokenRequestBodyMaxBytes = 8 << 10
 
+// A 4,000-rune JSON string can use 48 KiB when non-BMP runes are represented
+// as surrogate-pair escapes, so leave room for the fixed envelope as well.
+const miniAppTextTestRequestBodyMaxBytes = 64 << 10
+
 // MiniAppFeatureGate rejects disabled or incomplete Mini Program deployments
 // before rate limits, body parsing, bot checks, or authentication run.
 func MiniAppFeatureGate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if _, err := service.RequireMiniProgramConfig(); err != nil {
+			writeMiniAppAuthError(c, err)
+			return
+		}
+		c.Next()
+	}
+}
+
+// MiniAppTextTestFeatureGate keeps the unreviewed text-test capability off by
+// default, independently of the rest of the Mini Program BFF.
+func MiniAppTextTestFeatureGate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if _, err := service.RequireMiniProgramTextTestConfig(); err != nil {
 			writeMiniAppAuthError(c, err)
 			return
 		}
@@ -133,6 +149,32 @@ func MiniAppTokenRequestBodyLimit() gin.HandlerFunc {
 			return
 		}
 
+		c.Request.Body = io.NopCloser(bytes.NewReader(body))
+		c.Request.ContentLength = int64(len(body))
+		c.Next()
+	}
+}
+
+// MiniAppTextTestRequestBodyLimit accepts the largest valid encoded 4,000-rune
+// prompt while rejecting files or oversized payloads before a handler can
+// decode them.
+func MiniAppTextTestRequestBodyLimit() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body == nil {
+			c.Next()
+			return
+		}
+		if c.Request.ContentLength > miniAppTextTestRequestBodyMaxBytes {
+			writeMiniAppRequestTooLarge(c)
+			return
+		}
+		originalBody := c.Request.Body
+		body, err := io.ReadAll(io.LimitReader(originalBody, miniAppTextTestRequestBodyMaxBytes+1))
+		_ = originalBody.Close()
+		if err != nil || len(body) > miniAppTextTestRequestBodyMaxBytes {
+			writeMiniAppRequestTooLarge(c)
+			return
+		}
 		c.Request.Body = io.NopCloser(bytes.NewReader(body))
 		c.Request.ContentLength = int64(len(body))
 		c.Next()
