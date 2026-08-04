@@ -151,6 +151,15 @@ export async function renewMiniAppSession(): Promise<void> {
   storeSession(bundle)
 }
 
+export async function logoutMiniApp(): Promise<void> {
+  await request<unknown>({
+    path: '/auth/logout',
+    method: 'POST',
+    auth: 'session',
+  })
+  clearMiniAppSession()
+}
+
 export async function registerWithPendingIdentity(username: string, password: string): Promise<void> {
   const bundle = await request<unknown>({
     path: '/auth/register',

@@ -126,6 +126,34 @@ describe('WeChat mini program authentication service', () => {
     })
   })
 
+  it('revokes the mini program session before clearing its local credential', async () => {
+    const { logoutMiniApp } = await loadService()
+    const { getMiniAppSession, setMiniAppSession } = await import('../../lib/session')
+    setMiniAppSession({
+      accessToken: 'miniapp-access-token',
+      accessExpiresAt: Math.floor(Date.now() / 1000) + 60,
+      sid: 'miniapp-session-id',
+    })
+    taro.request.mockResolvedValue({
+      statusCode: 200,
+      header: {},
+      data: { success: true, message: '', data: { revoked: true } },
+    })
+
+    await logoutMiniApp()
+
+    expect(taro.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://gateway.example.com/api/miniapp/v1/auth/logout',
+        method: 'POST',
+        header: expect.objectContaining({
+          Authorization: 'Bearer miniapp-access-token',
+        }),
+      }),
+    )
+    expect(getMiniAppSession()).toBeNull()
+  })
+
   it('fails with a safe error when wx.login does not provide a code', async () => {
     const { loginWithWechat } = await loadService()
     taro.login.mockResolvedValue({ code: '' })

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/constant"
 	"github.com/QuantumNous/the-one/service"
 	"github.com/gin-gonic/gin"
 )
@@ -71,6 +72,7 @@ func MiniAppAuth() gin.HandlerFunc {
 		}
 
 		setDashboardAuthContext(c, user, identity, false)
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, user.Group)
 		c.Next()
 	}
 }

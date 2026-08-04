@@ -614,7 +614,7 @@ func TestRegisterMiniAppUserPreservesRegistrationFeatureAndVerificationChecks(t 
 	common.PasswordRegisterEnabled = true
 	common.EmailVerificationEnabled = true
 	_, err = RegisterMiniAppUser(ticket, registration, "127.0.0.1", "miniapp-test")
-	assert.ErrorIs(t, err, ErrMiniAppEmailVerification)
+	assert.ErrorIs(t, err, ErrMiniAppRegistrationDisabled)
 	_, err = model.GetAuthFlow(ticket, model.AuthFlowMatch{
 		Purpose: model.AuthFlowPurposeMiniAppPendingIdentity, Provider: miniAppAuthFlowProvider, Intent: model.AuthFlowIntentLogin,
 	})

@@ -137,7 +137,15 @@ func MiniAppTextTestStatus(c *gin.Context) {
 }
 
 func miniAppTextTestRelayContext(c *gin.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(common.WithSensitiveRelayPayloadLogging(c.Request.Context()), miniAppTextTestWaitTimeout)
+	// A Mini Program can cancel the client request while its process is sent to
+	// the background. The accepted test must still run the normal relay billing
+	// and settlement lifecycle, so its server context deliberately does not
+	// inherit client cancellation. Keep the sensitive-payload marker on this
+	// detached, bounded context so internal relay diagnostics stay redacted.
+	return context.WithTimeout(
+		common.WithSensitiveRelayPayloadLogging(context.WithoutCancel(c.Request.Context())),
+		miniAppTextTestWaitTimeout,
+	)
 }
 
 func miniAppTextTestContextCompletion(requestID string, err error) (service.MiniTextTestCompletion, bool) {

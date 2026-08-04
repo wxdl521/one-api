@@ -137,8 +137,9 @@ func TestMiniAppTextTestRelayResponseWriterDiscardsUpstreamOutput(t *testing.T) 
 	assert.Zero(t, writer.BufferedBytes())
 }
 
-func TestMiniAppTextTestRelayContextPropagatesClientCancellationToTerminalState(t *testing.T) {
-	callerContext, cancel := context.WithCancel(context.Background())
+func TestMiniAppTextTestRelayContextIgnoresClientCancellationAndRetainsSensitiveLogging(t *testing.T) {
+	const requestContextValueKey = "miniapp-relay-context-value"
+	callerContext, cancel := context.WithCancel(context.WithValue(context.Background(), requestContextValueKey, "preserved"))
 	t.Cleanup(cancel)
 	recorder := httptest.NewRecorder()
 	ginContext, _ := gin.CreateTestContext(recorder)
@@ -147,12 +148,15 @@ func TestMiniAppTextTestRelayContextPropagatesClientCancellationToTerminalState(
 	relayContext, stop := miniAppTextTestRelayContext(ginContext)
 	t.Cleanup(stop)
 	assert.True(t, common.SensitiveRelayPayloadLoggingSuppressed(relayContext))
+	assert.Equal(t, "preserved", relayContext.Value(requestContextValueKey))
 	cancel()
-	<-relayContext.Done()
+	select {
+	case <-relayContext.Done():
+		t.Fatal("the server relay context must outlive client cancellation")
+	default:
+	}
 
 	completion, terminal := miniAppTextTestContextCompletion("relay-request-123", relayContext.Err())
-	require.True(t, terminal)
-	assert.Equal(t, model.MiniTextTestAttemptStateFailed, completion.State)
-	assert.Equal(t, "MINIAPP_TEXT_TEST_UNAVAILABLE", completion.ErrorCode)
-	assert.Equal(t, "relay-request-123", completion.ChargeReference)
+	assert.False(t, terminal)
+	assert.Equal(t, service.MiniTextTestCompletion{}, completion)
 }

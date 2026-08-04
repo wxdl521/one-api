@@ -3,6 +3,7 @@ import Taro from '@tarojs/taro'
 import { useCallback, useEffect, useState } from 'react'
 
 import { getAccountOverview, type AccountOverview } from '../../features/account/account-service'
+import { logoutMiniApp } from '../../features/auth/auth-service'
 import { MiniAppApiError } from '../../lib/api'
 import { t } from '../../i18n/strings'
 import './index.scss'
@@ -23,6 +24,7 @@ function formatQuota(value: number): string {
 export default function AccountPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loggingOut, setLoggingOut] = useState(false)
   const [overview, setOverview] = useState<AccountOverview | null>(null)
 
   const loadOverview = useCallback(async () => {
@@ -47,6 +49,31 @@ export default function AccountPage() {
     void loadOverview()
   }, [loadOverview])
 
+  const navigateTo = async (url: string) => {
+    await Taro.navigateTo({ url })
+  }
+
+  const logout = async () => {
+    setLoggingOut(true)
+    setError(null)
+    try {
+      await logoutMiniApp()
+      await Taro.reLaunch({ url: '/pages/index/index' })
+    } catch {
+      setError(t('logoutFailed'))
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
+  const openPrivacy = async () => {
+    try {
+      await Taro.openPrivacyContract()
+    } catch {
+      setError(t('privacyUnavailable'))
+    }
+  }
+
   return (
     <View className="account-shell">
       <View className="account-header">
@@ -59,11 +86,42 @@ export default function AccountPage() {
       {loading && overview === null && <Text className="account-loading">{t('accountLoading')}</Text>}
       {error !== null && <Text className="account-error">{error}</Text>}
 
-      {overview !== null && (
-        <View className="account-content">
-          <Button className="account-refresh" onClick={() => void Taro.navigateTo({ url: '/pages/tokens/index' })}>
+      <View className="account-content">
+        <View className="account-card">
+          <Button className="account-refresh" onClick={() => void navigateTo('/pages/account/index')}>
+            {t('account')}
+          </Button>
+          <Button className="account-refresh" onClick={() => void navigateTo('/pages/tokens/index')}>
             {t('tokens')}
           </Button>
+          <Button className="account-refresh" onClick={() => void navigateTo('/pages/products/index')}>
+            {t('products')}
+          </Button>
+          <Button className="account-refresh" onClick={() => void navigateTo('/pages/orders/index')}>
+            {t('orders')}
+          </Button>
+          <Button className="account-refresh" onClick={() => void navigateTo('/pages/text-test/index')}>
+            {t('textTest')}
+          </Button>
+        </View>
+        <View className="account-card">
+          <Button className="account-refresh" disabled={loggingOut} loading={loggingOut} onClick={() => void logout()}>
+            {t('logout')}
+          </Button>
+          <Button className="account-refresh" onClick={() => void openPrivacy()}>
+            {t('privacy')}
+          </Button>
+          <Button className="account-refresh" openType="contact">
+            {t('support')}
+          </Button>
+          <Button className="account-refresh" openType="feedback">
+            {t('complaint')}
+          </Button>
+        </View>
+      </View>
+
+      {overview !== null && (
+        <View className="account-content">
           <View className="account-card">
             <Text className="account-name">{overview.displayName || overview.username}</Text>
             <Text className="account-username">{overview.username}</Text>

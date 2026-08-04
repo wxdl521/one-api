@@ -5,11 +5,17 @@ import { MiniAppApiError } from '../../../lib/api'
 import { t } from '../../../i18n/strings'
 
 const taro = vi.hoisted(() => ({
+  navigateTo: vi.fn(),
+  openPrivacyContract: vi.fn(),
   reLaunch: vi.fn(),
 }))
 
 const accountService = vi.hoisted(() => ({
   getAccountOverview: vi.fn(),
+}))
+
+const authService = vi.hoisted(() => ({
+  logoutMiniApp: vi.fn(),
 }))
 
 vi.mock('@tarojs/components', () => ({
@@ -20,6 +26,7 @@ vi.mock('@tarojs/components', () => ({
 
 vi.mock('@tarojs/taro', () => ({ default: taro, ...taro }))
 vi.mock('../../../features/account/account-service', () => accountService)
+vi.mock('../../../features/auth/auth-service', () => authService)
 
 import AccountPage from '../index'
 
@@ -63,6 +70,9 @@ const overview = {
 describe('AccountPage overview', () => {
   beforeEach(() => {
     accountService.getAccountOverview.mockReset()
+    authService.logoutMiniApp.mockReset()
+    taro.navigateTo.mockReset()
+    taro.openPrivacyContract.mockReset()
     taro.reLaunch.mockReset()
   })
 
@@ -131,6 +141,50 @@ describe('AccountPage overview', () => {
       await flushPromises()
     })
 
+    expect(taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' })
+  })
+
+  it('navigates to every account capability and exposes logout, privacy, support, and complaint actions', async () => {
+    accountService.getAccountOverview.mockResolvedValue(overview)
+    authService.logoutMiniApp.mockResolvedValue(undefined)
+    let renderer: ReactTestRenderer
+    await act(async () => {
+      renderer = create(<AccountPage />)
+      await flushPromises()
+    })
+
+    const navigationActions = [
+      [t('account'), '/pages/account/index'],
+      [t('tokens'), '/pages/tokens/index'],
+      [t('products'), '/pages/products/index'],
+      [t('orders'), '/pages/orders/index'],
+      [t('textTest'), '/pages/text-test/index'],
+    ]
+    for (const [label] of navigationActions) {
+      await act(async () => {
+        getButton(renderer!, label).props.onClick()
+      })
+    }
+    expect(taro.navigateTo.mock.calls).toEqual(
+      navigationActions.map(([, url]) => [{ url }]),
+    )
+
+    const supportButton = getButton(renderer!, t('support'))
+    const complaintButton = getButton(renderer!, t('complaint'))
+    expect(supportButton.props.openType).toBe('contact')
+    expect(complaintButton.props.openType).toBe('feedback')
+
+    await act(async () => {
+      getButton(renderer!, t('privacy')).props.onClick()
+      await flushPromises()
+    })
+    expect(taro.openPrivacyContract).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      getButton(renderer!, t('logout')).props.onClick()
+      await flushPromises()
+    })
+    expect(authService.logoutMiniApp).toHaveBeenCalledTimes(1)
     expect(taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' })
   })
 })

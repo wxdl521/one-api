@@ -396,6 +396,12 @@ func RegisterMiniAppUser(pendingTicket string, registration MiniAppRegistration,
 	if !common.PasswordRegisterEnabled {
 		return nil, ErrMiniAppPasswordRegistration
 	}
+	// The Mini Program has no email-code delivery or verification surface. Do
+	// not expose a registration path that can never satisfy the dashboard's
+	// email-verification policy; users can still bind an existing account.
+	if common.EmailVerificationEnabled {
+		return nil, ErrMiniAppRegistrationDisabled
+	}
 	registration.Username = strings.TrimSpace(registration.Username)
 	registration.Email = model.NormalizeEmail(registration.Email)
 	if registration.Username == "" {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/the-one/common"
+	"github.com/QuantumNous/the-one/constant"
 	"github.com/QuantumNous/the-one/model"
 	"github.com/QuantumNous/the-one/service"
 	"github.com/gin-gonic/gin"
@@ -77,8 +78,9 @@ func TestMiniAppAuthAcceptsOnlyLiveMiniProgramSessions(t *testing.T) {
 	router := gin.New()
 	router.GET("/protected", MiniAppAuth(), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"id":         c.GetInt("id"),
-			"session_id": c.GetString("session_id"),
+			"id":          c.GetInt("id"),
+			"session_id":  c.GetString("session_id"),
+			"using_group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		})
 	})
 
@@ -112,12 +114,14 @@ func TestMiniAppAuthAcceptsOnlyLiveMiniProgramSessions(t *testing.T) {
 				return
 			}
 			var body struct {
-				ID        int    `json:"id"`
-				SessionID string `json:"session_id"`
+				ID         int    `json:"id"`
+				SessionID  string `json:"session_id"`
+				UsingGroup string `json:"using_group"`
 			}
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
 			assert.Equal(t, test.wantHandlerID, body.ID)
 			assert.Equal(t, miniBundle.Session.SID, body.SessionID)
+			assert.Equal(t, "default", body.UsingGroup)
 		})
 	}
 
