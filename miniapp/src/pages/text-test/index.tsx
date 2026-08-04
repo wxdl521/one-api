@@ -14,6 +14,7 @@ import {
 import { TextTestLifecycle } from '../../features/text-test/text-test-lifecycle'
 import { t } from '../../i18n/strings'
 import { MiniAppApiError } from '../../lib/api'
+import { getPendingTextTestRequestID } from '../../lib/pending-text-test'
 import './index.scss'
 
 function shouldReturnToLogin(error: unknown): boolean {
@@ -43,8 +44,9 @@ export default function TextTestPage() {
   const [input, setInput] = useState('')
   const [loadingModels, setLoadingModels] = useState(true)
   const [models, setModels] = useState<string[]>([])
-  const [pendingRequestID, setPendingRequestID] = useState<string | null>(null)
+  const [pendingRequestID, setPendingRequestID] = useState<string | null>(getPendingTextTestRequestID)
   const [selectedModel, setSelectedModel] = useState('')
+  const [starting, setStarting] = useState(false)
   const [status, setStatus] = useState<MiniTextTestStatus | null>(null)
   const isMountedRef = useRef(true)
   const lifecycleRef = useRef<TextTestLifecycle | null>(null)
@@ -58,12 +60,11 @@ export default function TextTestPage() {
         requestError.code === 'MINIAPP_TEXT_TEST_INVALID' ||
         requestError.code === 'MINIAPP_TEXT_TEST_MODEL_UNAVAILABLE' ||
         requestError.code === 'MINIAPP_TEXT_TEST_REQUEST_CONFLICT' ||
-        requestError.code === 'MINIAPP_TEXT_TEST_NOT_FOUND' ||
         shouldReturnToLogin(requestError)
       )),
       onError: (requestError) => {
         if (shouldReturnToLogin(requestError)) {
-          lifecycleRef.current?.unload()
+          lifecycleRef.current?.resetSession()
           void Taro.reLaunch({ url: '/pages/index/index' })
           return
         }
@@ -81,6 +82,7 @@ export default function TextTestPage() {
           setPendingRequestID(requestID)
         }
       },
+      onStartChange: setStarting,
       onStatus: (nextStatus) => {
         if (isMountedRef.current) {
           setError(null)
@@ -106,7 +108,7 @@ export default function TextTestPage() {
         return
       }
       if (shouldReturnToLogin(loadError)) {
-        lifecycleRef.current?.unload()
+        lifecycleRef.current?.resetSession()
         await Taro.reLaunch({ url: '/pages/index/index' })
         return
       }
@@ -142,6 +144,11 @@ export default function TextTestPage() {
   })
 
   const submit = async () => {
+    if (pendingRequestID !== null) {
+      setError(null)
+      await lifecycleRef.current?.submit({ model: selectedModel, input })
+      return
+    }
     if (!isMiniTextTestInputValid(input)) {
       setError(t('textTestInputLimit'))
       return
@@ -156,7 +163,7 @@ export default function TextTestPage() {
 
   const selectedModelIndex = Math.max(models.indexOf(selectedModel), 0)
   const inputIsValid = isMiniTextTestInputValid(input)
-  const actionDisabled = loadingModels || selectedModel === '' || (!inputIsValid && pendingRequestID === null)
+  const actionDisabled = starting || (pendingRequestID === null && (loadingModels || selectedModel === '' || !inputIsValid))
 
   return (
     <View className="text-test-shell">
@@ -196,7 +203,7 @@ export default function TextTestPage() {
         <Button
           className="text-test-submit"
           disabled={actionDisabled}
-          loading={pendingRequestID !== null && status?.state === 'running'}
+          loading={starting || (pendingRequestID !== null && status?.state === 'running')}
           onClick={() => void submit()}
         >
           {pendingRequestID === null ? t('textTestSubmit') : t('textTestCheckStatus')}

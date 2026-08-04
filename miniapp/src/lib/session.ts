@@ -1,3 +1,5 @@
+import { clearPendingTextTestRequestID } from './pending-text-test'
+
 export interface MiniAppSession {
   accessToken: string
   accessExpiresAt: number
@@ -19,7 +21,7 @@ export function getMiniAppSession(): MiniAppSession | null {
     return null
   }
   if (currentSession.accessExpiresAt <= Math.floor(Date.now() / 1000)) {
-    currentSession = null
+    clearMiniAppSession()
     return null
   }
   return currentSession
@@ -27,4 +29,5 @@ export function getMiniAppSession(): MiniAppSession | null {
 
 export function clearMiniAppSession(): void {
   currentSession = null
+  clearPendingTextTestRequestID()
 }

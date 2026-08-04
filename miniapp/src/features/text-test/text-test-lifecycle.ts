@@ -1,4 +1,8 @@
 import type { MiniTextTestStatus, StartMiniTextTestInput } from './text-test-service'
+import {
+  getPendingTextTestRequestID,
+  setPendingTextTestRequestID,
+} from '../../lib/pending-text-test'
 
 export type { MiniTextTestStatus } from './text-test-service'
 
@@ -13,6 +17,9 @@ export interface TextTestLifecycleOptions {
   onPending: (requestID: string, key: 'textTestPending') => void
   onError: (error: unknown) => void
   onRequestIDChange?: (requestID: string | null) => void
+  onStartChange?: (starting: boolean) => void
+  getPersistedRequestID?: () => string | null
+  setPersistedRequestID?: (requestID: string | null) => void
   isRetryableError?: (error: unknown) => boolean
   now?: () => number
   setTimeout?: (callback: () => void, delay: number) => ReturnType<typeof globalThis.setTimeout>
@@ -25,6 +32,7 @@ export class TextTestLifecycle {
   private foregroundDeadline = 0
   private operation = 0
   private pendingRequestID: string | null = null
+  private starting = false
   private pollTimer: ReturnType<typeof globalThis.setTimeout> | null = null
   private readonly clearTimeout: (timer: ReturnType<typeof globalThis.setTimeout>) => void
   private readonly now: () => number
@@ -34,6 +42,7 @@ export class TextTestLifecycle {
     this.clearTimeout = options.clearTimeout ?? globalThis.clearTimeout
     this.now = options.now ?? Date.now
     this.setTimeout = options.setTimeout ?? globalThis.setTimeout
+    this.pendingRequestID = (options.getPersistedRequestID ?? getPendingTextTestRequestID)()
   }
 
   getPendingRequestID(): string | null {
@@ -54,18 +63,23 @@ export class TextTestLifecycle {
   hide(): void {
     this.foreground = false
     this.operation += 1
+    this.setStarting(false)
     this.clearPollTimer()
   }
 
   unload(): void {
     this.active = false
     this.hide()
-    this.clearPendingRequestID()
     this.foregroundDeadline = 0
   }
 
+  resetSession(): void {
+    this.unload()
+    this.clearPendingRequestID()
+  }
+
   async submit(input: Omit<StartMiniTextTestInput, 'clientRequestID'>): Promise<void> {
-    if (!this.active || !this.foreground) {
+    if (!this.active || !this.foreground || this.starting) {
       return
     }
     if (this.pendingRequestID !== null) {
@@ -74,6 +88,7 @@ export class TextTestLifecycle {
       return
     }
 
+    this.setStarting(true)
     const operation = ++this.operation
     try {
       const requestID = await this.options.createRequestID()
@@ -81,17 +96,20 @@ export class TextTestLifecycle {
         return
       }
       this.pendingRequestID = requestID
+      this.setPersistedRequestID(requestID)
       this.options.onRequestIDChange?.(requestID)
       this.foregroundDeadline = this.now() + foregroundPollLimitMilliseconds
       const status = await this.options.start({ ...input, clientRequestID: requestID })
       if (!this.current(operation)) {
         return
       }
+      this.setStarting(false)
       this.handleStatus(status)
     } catch (error) {
       if (!this.current(operation)) {
         return
       }
+      this.setStarting(false)
       const retryable = this.options.isRetryableError?.(error) ?? true
       if (!retryable) {
         this.clearPendingRequestID()
@@ -105,7 +123,7 @@ export class TextTestLifecycle {
 
   async checkStatus(): Promise<void> {
     const requestID = this.pendingRequestID
-    if (!this.active || !this.foreground || requestID === null) {
+    if (!this.active || !this.foreground || this.starting || requestID === null) {
       return
     }
     this.clearPollTimer()
@@ -175,6 +193,20 @@ export class TextTestLifecycle {
 
   private clearPendingRequestID(): void {
     this.pendingRequestID = null
+    this.setPersistedRequestID(null)
     this.options.onRequestIDChange?.(null)
+  }
+
+  private setStarting(starting: boolean): void {
+    if (this.starting === starting) {
+      return
+    }
+    this.starting = starting
+    this.options.onStartChange?.(starting)
+  }
+
+  private setPersistedRequestID(requestID: string | null): void {
+    const persistRequestID = this.options.setPersistedRequestID ?? setPendingTextTestRequestID
+    persistRequestID(requestID)
   }
 }

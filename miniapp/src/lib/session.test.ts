@@ -1,4 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const taro = vi.hoisted(() => ({
+  removeStorageSync: vi.fn(),
+}))
+
+vi.mock('@tarojs/taro', () => ({ default: taro, ...taro }))
 
 import {
   clearMiniAppSession,
@@ -7,6 +13,10 @@ import {
 } from './session'
 
 describe('mini program session', () => {
+  beforeEach(() => {
+    taro.removeStorageSync.mockReset()
+  })
+
   afterEach(() => {
     clearMiniAppSession()
   })
@@ -37,5 +47,6 @@ describe('mini program session', () => {
 
     expect(getMiniAppSession()).toBeNull()
     expect(getMiniAppSession()).toBeNull()
+    expect(taro.removeStorageSync).toHaveBeenCalledWith('miniapp.pending-text-test-request-id.v1')
   })
 })

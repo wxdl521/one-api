@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
+const taro = vi.hoisted(() => ({
+  getStorageSync: vi.fn(),
+  removeStorageSync: vi.fn(),
+  setStorageSync: vi.fn(),
+}))
+
+vi.mock('@tarojs/taro', () => ({ default: taro, ...taro }))
+
 import {
   TextTestLifecycle,
   type MiniTextTestStatus,
@@ -17,12 +25,17 @@ const runningStatus: MiniTextTestStatus = {
   completedAt: 0,
 }
 
-function createLifecycle(options?: { isRetryableError?: (error: unknown) => boolean }) {
+function createLifecycle(options?: {
+  initialPendingRequestID?: string | null
+  isRetryableError?: (error: unknown) => boolean
+}) {
   const createRequestID = vi.fn().mockResolvedValue('test-request-id')
   const getStatus = vi.fn().mockResolvedValue(runningStatus)
   const onError = vi.fn()
   const onPending = vi.fn()
+  const onStartChange = vi.fn()
   const onStatus = vi.fn()
+  const persistPendingRequestID = vi.fn()
   const start = vi.fn().mockResolvedValue(runningStatus)
   const clearTimeout = vi.fn()
   const setTimeout = vi.fn<(callback: () => void, delay: number) => ReturnType<typeof globalThis.setTimeout>>(
@@ -32,14 +45,17 @@ function createLifecycle(options?: { isRetryableError?: (error: unknown) => bool
   const lifecycle = new TextTestLifecycle({
     createRequestID,
     getStatus,
+    getPersistedRequestID: () => options?.initialPendingRequestID ?? null,
     isRetryableError: options?.isRetryableError,
     onError,
     onPending,
+    onStartChange,
     onStatus,
     start,
     clearTimeout,
     now,
     setTimeout,
+    setPersistedRequestID: persistPendingRequestID,
   })
   return {
     lifecycle,
@@ -47,7 +63,9 @@ function createLifecycle(options?: { isRetryableError?: (error: unknown) => bool
     getStatus,
     onError,
     onPending,
+    onStartChange,
     onStatus,
+    persistPendingRequestID,
     start,
     clearTimeout,
     setTimeout,
@@ -67,6 +85,27 @@ describe('text-test page lifecycle', () => {
     expect(createRequestID).toHaveBeenCalledTimes(1)
     expect(start).toHaveBeenCalledTimes(1)
     expect(getStatus).toHaveBeenCalledWith('test-request-id')
+  })
+
+  it('does not query status while the first start call is still in flight', async () => {
+    let resolveStart: (status: MiniTextTestStatus) => void = () => undefined
+    const pendingStart = new Promise<MiniTextTestStatus>((resolve) => {
+      resolveStart = resolve
+    })
+    const { lifecycle, createRequestID, getStatus, start } = createLifecycle()
+    start.mockReturnValue(pendingStart)
+    lifecycle.show()
+
+    const firstSubmit = lifecycle.submit({ model: 'gpt-mini', input: 'start before checking status' })
+    await Promise.resolve()
+    await lifecycle.submit({ model: 'gpt-mini', input: 'start before checking status' })
+
+    expect(createRequestID).toHaveBeenCalledTimes(1)
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
+
+    resolveStart({ ...runningStatus })
+    await firstSubmit
   })
 
   it('does not poll past the 20-second foreground budget and leaves the same attempt pending', async () => {
@@ -100,7 +139,7 @@ describe('text-test page lifecycle', () => {
 
     expect(clearTimeout).toHaveBeenCalled()
     expect(onStatus).toHaveBeenCalledTimes(1)
-    expect(lifecycle.getPendingRequestID()).toBeNull()
+    expect(lifecycle.getPendingRequestID()).toBe('test-request-id')
   })
 
   it('releases a request ID when the server rejects it before creating an attempt', async () => {
@@ -116,5 +155,51 @@ describe('text-test page lifecycle', () => {
     expect(onError).toHaveBeenCalledWith(rejected)
     expect(setTimeout).not.toHaveBeenCalled()
     expect(lifecycle.getPendingRequestID()).toBeNull()
+  })
+
+  it('retains the persisted ID after an unload and resumes status polling with it', async () => {
+    const { lifecycle, getStatus, persistPendingRequestID } = createLifecycle()
+    lifecycle.show()
+    await lifecycle.submit({ model: 'gpt-mini', input: 'persist only the request id' })
+    lifecycle.unload()
+
+    expect(persistPendingRequestID).toHaveBeenCalledWith('test-request-id')
+    expect(persistPendingRequestID).not.toHaveBeenCalledWith(null)
+
+    const restored = createLifecycle({ initialPendingRequestID: 'test-request-id' })
+    restored.lifecycle.show()
+    await Promise.resolve()
+
+    expect(restored.getStatus).toHaveBeenCalledWith('test-request-id')
+    expect(getStatus).not.toHaveBeenCalled()
+  })
+
+  it('keeps a transitional not-found status on the same request ID for bounded retry', async () => {
+    const notFound = new Error('attempt is not visible yet')
+    const { lifecycle, onError, persistPendingRequestID, setTimeout, getStatus } = createLifecycle({
+      isRetryableError: (error) => error === notFound,
+    })
+    getStatus.mockRejectedValue(notFound)
+    lifecycle.show()
+    await lifecycle.submit({ model: 'gpt-mini', input: 'await durable server attempt' })
+
+    await lifecycle.checkStatus()
+
+    expect(onError).toHaveBeenCalledWith(notFound)
+    expect(lifecycle.getPendingRequestID()).toBe('test-request-id')
+    expect(persistPendingRequestID).toHaveBeenCalledWith('test-request-id')
+    expect(persistPendingRequestID).not.toHaveBeenCalledWith(null)
+    expect(setTimeout).toHaveBeenCalled()
+  })
+
+  it('clears the persisted request ID when the mini program session resets', async () => {
+    const { lifecycle, persistPendingRequestID } = createLifecycle()
+    lifecycle.show()
+    await lifecycle.submit({ model: 'gpt-mini', input: 'remove pending request after session reset' })
+
+    lifecycle.resetSession()
+
+    expect(lifecycle.getPendingRequestID()).toBeNull()
+    expect(persistPendingRequestID).toHaveBeenLastCalledWith(null)
   })
 })
