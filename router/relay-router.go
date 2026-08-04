@@ -66,6 +66,15 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
+	promptShotRouter := router.Group("/v1")
+	promptShotRouter.Use(middleware.RouteTag("relay"))
+	promptShotRouter.Use(middleware.SystemPerformanceCheck())
+	{
+		promptShotRouter.POST("/auth/validate", middleware.PromptShotBodyTokenAuth(), middleware.TokenAuth(), controller.PromptShotAuthValidate)
+		promptShotRouter.POST("/reverse-prompt", middleware.TokenAuth(), controller.PromptShotPrepareReverse(), controller.PromptShotResponseAdapter(), middleware.ModelRequestRateLimit(), middleware.Distribute(), controller.PromptShotRelay)
+		promptShotRouter.POST("/generate-image", middleware.TokenAuth(), controller.PromptShotPrepareGenerate(), controller.PromptShotResponseAdapter(), middleware.ModelRequestRateLimit(), middleware.Distribute(), controller.PromptShotRelay)
+		promptShotRouter.POST("/clean-image", middleware.TokenAuth(), controller.PromptShotPrepareClean(), controller.PromptShotResponseAdapter(), middleware.ModelRequestRateLimit(), middleware.Distribute(), controller.PromptShotRelay)
+	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())

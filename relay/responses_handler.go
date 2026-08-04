@@ -112,7 +112,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (theOneError *
 			}
 		}
 
-		logger.LogDebug(c, "requestBody: %s", jsonData)
+		if !shouldRedactPromptShotPayload(c) {
+			logger.LogDebug(c, "requestBody: %s", jsonData)
+		}
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())

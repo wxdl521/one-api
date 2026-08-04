@@ -86,6 +86,7 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (theOneErr *types.TheOneError) {
 	theOneErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	redactPromptShot := IsPromptShotRequestContext(ctx)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -104,10 +105,14 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 
 	err = common.Unmarshal(responseBody, &errResponse)
 	if err != nil {
-		if showBodyWhenFail {
+		if showBodyWhenFail && !redactPromptShot {
 			theOneErr.Err = buildErrWithBody("")
 		} else {
-			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
+			if redactPromptShot {
+				logger.LogError(ctx, fmt.Sprintf("bad response status code %d for promptshot request", resp.StatusCode))
+			} else {
+				logger.LogError(ctx, fmt.Sprintf("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
+			}
 			theOneErr.Err = fmt.Errorf("bad response status code %d", resp.StatusCode)
 		}
 		return
@@ -118,7 +123,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
 			theOneErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
-			if showBodyWhenFail {
+			if showBodyWhenFail && !redactPromptShot {
 				theOneErr.Err = buildErrWithBody(theOneErr.Error())
 			}
 			return
@@ -128,10 +133,14 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	if message == "" {
 		// The body parsed as JSON but carried no usable error message; log the
 		// raw body so the upstream failure remains diagnosable.
-		logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
+		if redactPromptShot {
+			logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message for promptshot request", resp.StatusCode))
+		} else {
+			logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
+		}
 	}
 	theOneErr = types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
-	if showBodyWhenFail {
+	if showBodyWhenFail && !redactPromptShot {
 		theOneErr.Err = buildErrWithBody(theOneErr.Error())
 	}
 	return

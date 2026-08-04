@@ -89,7 +89,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	defer func() {
 		if theOneError != nil {
-			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(theOneError.Error())))
+			logger.LogError(c, fmt.Sprintf("relay error: %s", promptShotRelayLogMessage(c, theOneError)))
 			theOneError.SetMessage(common.MessageWithRequestId(theOneError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
@@ -356,12 +356,21 @@ func shouldRetry(c *gin.Context, openaiErr *types.TheOneError, retryTimes int) b
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.TheOneError) {
-	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
+	promptShotRequest := c.GetBool(promptShotContextKey)
+	if promptShotRequest {
+		logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): promptshot relay request failed", channelError.ChannelId, err.StatusCode))
+	} else {
+		logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
+	}
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
 		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+			reason := err.ErrorWithStatusCode()
+			if promptShotRequest {
+				reason = "promptshot upstream request failed"
+			}
+			service.DisableChannel(channelError, reason)
 		})
 	}
 
@@ -397,7 +406,11 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		content := err.MaskSensitiveErrorWithStatusCode()
+		if promptShotRequest {
+			content = "promptshot upstream request failed"
+		}
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, content, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }

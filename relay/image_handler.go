@@ -76,7 +76,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (theOneError *type
 				}
 			}
 
-			logger.LogDebug(c, "image request body: %s", jsonData)
+			if !shouldRedactPromptShotPayload(c) {
+				logger.LogDebug(c, "image request body: %s", jsonData)
+			}
 			body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 			if err != nil {
 				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
