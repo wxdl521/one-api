@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -88,11 +87,12 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	theOneErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	sensitiveRelayPayload := common.SensitiveRelayPayloadLoggingSuppressed(ctx)
 
-	responseBody, err := io.ReadAll(resp.Body)
+	defer CloseResponseBodyGracefully(resp)
+	responseBody, err := common.ReadRelayResponseBody(ctx, resp.Body)
 	if err != nil {
+		theOneErr.Err = err
 		return
 	}
-	CloseResponseBodyGracefully(resp)
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)

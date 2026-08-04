@@ -164,6 +164,19 @@ func TestRelayErrorHandlerRedactsSensitiveRelayErrorPayload(t *testing.T) {
 	require.Equal(t, "upstream request failed", theOneError.Error())
 }
 
+func TestRelayErrorHandlerBoundsSensitiveRelayErrorBody(t *testing.T) {
+	body := strings.Repeat("large-error-body", common.SensitiveRelayResponseBodyMaxBytes)
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	theOneError := RelayErrorHandler(common.WithSensitiveRelayPayloadLogging(context.Background()), resp, false)
+
+	require.ErrorIs(t, theOneError, common.ErrSensitiveRelayResponseBodyTooLarge)
+	require.NotContains(t, theOneError.Error(), "large-error-body")
+}
+
 func withDebugEnabled(t *testing.T, enabled bool) {
 	t.Helper()
 
