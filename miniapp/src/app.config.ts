@@ -10,6 +10,7 @@ const appConfig = {
     'pages/tokens/index',
     'pages/products/index',
     'pages/orders/index',
+    'pages/checkout/index',
     'pages/text-test/index',
   ],
   window: {

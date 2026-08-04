@@ -543,6 +543,10 @@ func MiniAppAuthErrorCode(err error) (int, string) {
 		return http.StatusBadRequest, "MINIAPP_TOKEN_INVALID"
 	case errors.Is(err, ErrMiniAppTokenNotFound):
 		return http.StatusNotFound, "MINIAPP_TOKEN_NOT_FOUND"
+	case errors.Is(err, ErrMiniAppCheckoutInvalid):
+		return http.StatusBadRequest, "MINIAPP_CHECKOUT_INVALID"
+	case errors.Is(err, ErrMiniAppCheckoutUnavailable):
+		return http.StatusNotFound, "MINIAPP_CHECKOUT_UNAVAILABLE"
 	case errors.Is(err, model.ErrAuthFlowExpired), errors.Is(err, model.ErrMiniAppBindingExpired):
 		return http.StatusGone, "MINIAPP_TICKET_EXPIRED"
 	case errors.Is(err, model.ErrAuthFlowConsumed), errors.Is(err, model.ErrMiniAppBindingAlreadyExists), errors.Is(err, model.ErrMiniAppBindingAlreadyBound), errors.Is(err, model.ErrWechatMiniIdentityAlreadyBound):

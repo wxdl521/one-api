@@ -30,6 +30,10 @@ func SetMiniAppRouter(router *gin.Engine) {
 		{
 			protected.POST("/auth/logout", controller.MiniAppLogout)
 			protected.GET("/me/overview", controller.MiniAppAccountOverview)
+			protected.GET("/plans", controller.MiniAppListPlans)
+			protected.GET("/products", controller.MiniAppListProducts)
+			protected.GET("/orders", controller.MiniAppListOrders)
+			protected.POST("/checkout", middleware.CriticalRateLimit(), controller.MiniAppStartCheckout)
 			protected.GET("/tokens", controller.MiniAppListTokens)
 			protected.POST("/tokens", middleware.MiniAppTokenRequestBodyLimit(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.MiniAppCreateToken)
 			protected.PATCH("/tokens/:id/status", middleware.MiniAppTokenRequestBodyLimit(), middleware.CriticalRateLimit(), controller.MiniAppUpdateTokenStatus)
@@ -45,5 +49,15 @@ func SetMiniAppRouter(router *gin.Engine) {
 	browserBinding.Use(middleware.UserAuth(), middleware.MiniAppAuthenticatedUserRateLimit())
 	{
 		browserBinding.POST("/confirm", controller.ConfirmMiniAppBrowserBinding)
+	}
+
+	browserCheckout := router.Group("/api/miniapp/checkout")
+	browserCheckout.Use(middleware.RouteTag("api"))
+	browserCheckout.Use(middleware.MiniAppFeatureGate())
+	browserCheckout.Use(middleware.BodyStorageCleanup())
+	browserCheckout.Use(middleware.MiniAppBindingRequestBodyLimit())
+	browserCheckout.Use(middleware.UserAuth(), middleware.MiniAppAuthenticatedUserRateLimit(), middleware.CriticalRateLimit())
+	{
+		browserCheckout.POST("/confirm", controller.ConfirmMiniAppBrowserCheckout)
 	}
 }

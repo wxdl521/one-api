@@ -16,6 +16,7 @@ describe('phase-one route manifest', () => {
       'pages/tokens/index',
       'pages/products/index',
       'pages/orders/index',
+      'pages/checkout/index',
       'pages/text-test/index',
     ])
   })

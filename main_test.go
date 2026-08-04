@@ -36,10 +36,12 @@ func TestMiniAppBindingBootstrapPrecedesAnalyticsInjectionPoints(t *testing.T) {
 
 	html := string(indexPage)
 	bootstrapIndex := strings.Index(html, miniAppBindingTicketBootstrapWindowKey)
+	checkoutBootstrapIndex := strings.Index(html, miniAppCheckoutTicketBootstrapWindowKey)
 	umamiIndex := strings.Index(html, "<!--Umami QuantumNous-->")
 	googleIndex := strings.Index(html, "<!--Google Analytics QuantumNous-->")
 
 	require.GreaterOrEqual(t, bootstrapIndex, 0)
+	require.GreaterOrEqual(t, checkoutBootstrapIndex, 0)
 	require.GreaterOrEqual(t, umamiIndex, 0)
 	require.GreaterOrEqual(t, googleIndex, 0)
 	assert.Less(t, bootstrapIndex, umamiIndex)

@@ -24,8 +24,10 @@ const (
 	AuthFlowPurposeTelegramAssertion      = "telegram_assertion"
 	AuthFlowPurposeMiniAppPendingIdentity = "miniapp_pending_identity"
 	AuthFlowPurposeMiniAppBind            = "miniapp_bind"
+	AuthFlowPurposeMiniAppCheckout        = "miniapp_checkout"
 	AuthFlowIntentLogin                   = "login"
 	AuthFlowIntentBind                    = "bind"
+	AuthFlowIntentCheckout                = "checkout"
 	AuthFlowTokenBytes                    = 32
 	AuthFlowDefaultCleanupRetention       = 24 * time.Hour
 )
