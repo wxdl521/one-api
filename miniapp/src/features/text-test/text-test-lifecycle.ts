@@ -8,6 +8,7 @@ export type { MiniTextTestStatus } from './text-test-service'
 
 const pollDelayMilliseconds = 1_500
 const foregroundPollLimitMilliseconds = 20_000
+const inFlightStartRequestIDs = new Set<string>()
 
 export interface TextTestLifecycleOptions {
   createRequestID: () => Promise<string>
@@ -63,7 +64,6 @@ export class TextTestLifecycle {
   hide(): void {
     this.foreground = false
     this.operation += 1
-    this.setStarting(false)
     this.clearPollTimer()
   }
 
@@ -90,8 +90,9 @@ export class TextTestLifecycle {
 
     this.setStarting(true)
     const operation = ++this.operation
+    let requestID: string | null = null
     try {
-      const requestID = await this.options.createRequestID()
+      requestID = await this.options.createRequestID()
       if (!this.current(operation)) {
         return
       }
@@ -99,17 +100,16 @@ export class TextTestLifecycle {
       this.setPersistedRequestID(requestID)
       this.options.onRequestIDChange?.(requestID)
       this.foregroundDeadline = this.now() + foregroundPollLimitMilliseconds
+      inFlightStartRequestIDs.add(requestID)
       const status = await this.options.start({ ...input, clientRequestID: requestID })
       if (!this.current(operation)) {
         return
       }
-      this.setStarting(false)
       this.handleStatus(status)
     } catch (error) {
       if (!this.current(operation)) {
         return
       }
-      this.setStarting(false)
       const retryable = this.options.isRetryableError?.(error) ?? true
       if (!retryable) {
         this.clearPendingRequestID()
@@ -118,12 +118,24 @@ export class TextTestLifecycle {
       if (retryable) {
         this.schedulePoll()
       }
+    } finally {
+      if (requestID !== null) {
+        inFlightStartRequestIDs.delete(requestID)
+      }
+      this.setStarting(false)
+      if (!this.current(operation) && this.active && this.foreground && this.pendingRequestID !== null) {
+        void this.checkStatus()
+      }
     }
   }
 
   async checkStatus(): Promise<void> {
     const requestID = this.pendingRequestID
-    if (!this.active || !this.foreground || this.starting || requestID === null) {
+    if (!this.active || !this.foreground || requestID === null) {
+      return
+    }
+    if (this.starting || inFlightStartRequestIDs.has(requestID)) {
+      this.schedulePoll()
       return
     }
     this.clearPollTimer()

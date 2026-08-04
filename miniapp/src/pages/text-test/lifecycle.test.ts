@@ -108,6 +108,38 @@ describe('text-test page lifecycle', () => {
     await firstSubmit
   })
 
+  it('waits for an in-flight start across hide, show, unload, and restore before checking status', async () => {
+    let resolveStart: (status: MiniTextTestStatus) => void = () => undefined
+    const pendingStart = new Promise<MiniTextTestStatus>((resolve) => {
+      resolveStart = resolve
+    })
+    const first = createLifecycle()
+    first.start.mockReturnValue(pendingStart)
+    first.lifecycle.show()
+
+    const firstSubmit = first.lifecycle.submit({ model: 'gpt-mini', input: 'wait for the post to settle' })
+    await Promise.resolve()
+    first.lifecycle.hide()
+    first.lifecycle.show()
+
+    expect(first.getStatus).not.toHaveBeenCalled()
+    expect(first.onStartChange).toHaveBeenLastCalledWith(true)
+
+    first.lifecycle.unload()
+    const restored = createLifecycle({ initialPendingRequestID: 'test-request-id' })
+    restored.lifecycle.show()
+
+    expect(restored.getStatus).not.toHaveBeenCalled()
+    const poll = restored.setTimeout.mock.calls[0]?.[0] as (() => void)
+
+    resolveStart({ ...runningStatus })
+    await firstSubmit
+    await poll()
+
+    expect(first.onStartChange).toHaveBeenLastCalledWith(false)
+    expect(restored.getStatus).toHaveBeenCalledWith('test-request-id')
+  })
+
   it('does not poll past the 20-second foreground budget and leaves the same attempt pending', async () => {
     const { lifecycle, getStatus, onPending, setTimeout, now } = createLifecycle()
     lifecycle.show()

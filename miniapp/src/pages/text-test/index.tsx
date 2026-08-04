@@ -82,7 +82,11 @@ export default function TextTestPage() {
           setPendingRequestID(requestID)
         }
       },
-      onStartChange: setStarting,
+      onStartChange: (isStarting) => {
+        if (isMountedRef.current) {
+          setStarting(isStarting)
+        }
+      },
       onStatus: (nextStatus) => {
         if (isMountedRef.current) {
           setError(null)
