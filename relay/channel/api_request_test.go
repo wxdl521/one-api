@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/the-one/relaykit/types"
 	"github.com/QuantumNous/the-one/service"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,6 +117,82 @@ func TestDoApiRequestPropagatesRequestContextCancellationToUpstream(t *testing.T
 	cancel()
 
 	require.Error(t, <-result)
+}
+
+func TestDoWssRequestPropagatesRequestContextCancellationToUpstream(t *testing.T) {
+	upstreamStarted := make(chan struct{})
+	dialStop, stopDial := context.WithCancel(context.Background())
+	t.Cleanup(stopDial)
+	previousNetDialContext := websocket.DefaultDialer.NetDialContext
+	previousProxy := websocket.DefaultDialer.Proxy
+	websocket.DefaultDialer.Proxy = nil
+	websocket.DefaultDialer.NetDialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		close(upstreamStarted)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-dialStop.Done():
+			return nil, dialStop.Err()
+		}
+	}
+	t.Cleanup(func() {
+		websocket.DefaultDialer.NetDialContext = previousNetDialContext
+		websocket.DefaultDialer.Proxy = previousProxy
+	})
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodGet, "/v1/realtime", nil).WithContext(requestContext)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelSetting: dto.ChannelSettings{}}}
+	adaptor := &apiRequestContextTestAdaptor{url: "ws://relay.test/v1/realtime"}
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := DoWssRequest(adaptor, ginContext, info, nil)
+		result <- err
+	}()
+	<-upstreamStarted
+	cancel()
+
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("websocket dial did not stop after request context cancellation")
+	}
+}
+
+func TestDoWssRequestConnectsWithActiveRequestContext(t *testing.T) {
+	releaseUpstream := make(chan struct{})
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		<-releaseUpstream
+	}))
+	t.Cleanup(func() {
+		close(releaseUpstream)
+		server.Close()
+	})
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodGet, "/v1/realtime", nil)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelSetting: dto.ChannelSettings{}}}
+	adaptor := &apiRequestContextTestAdaptor{url: "ws" + strings.TrimPrefix(server.URL, "http")}
+
+	conn, err := DoWssRequest(adaptor, ginContext, info, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.NoError(t, conn.Close())
 }
 
 func TestProcessHeaderOverride_ChannelTestSkipsClientHeaderPlaceholder(t *testing.T) {
