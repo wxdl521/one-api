@@ -264,6 +264,9 @@ func migrateDB() error {
 	if err := ensureAgentPlanQuotaPoolSourceChannelUnique(); err != nil {
 		return err
 	}
+	if err := migrateTokenSource(); err != nil {
+		return err
+	}
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -277,6 +280,9 @@ func migrateDB() error {
 		&User{},
 		&UserSession{},
 		&AuthFlow{},
+		&WechatMiniIdentity{},
+		&MiniAppBinding{},
+		&MiniTextTestAttempt{},
 		&AgentConnectRequest{},
 		&ExternalIdentityClaim{},
 		&PasskeyCredential{},
@@ -338,6 +344,9 @@ func migrateDBFast() error {
 	if err := ensureAgentPlanQuotaPoolSourceChannelUnique(); err != nil {
 		return err
 	}
+	if err := migrateTokenSource(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -350,6 +359,9 @@ func migrateDBFast() error {
 		{&User{}, "User"},
 		{&UserSession{}, "UserSession"},
 		{&AuthFlow{}, "AuthFlow"},
+		{&WechatMiniIdentity{}, "WechatMiniIdentity"},
+		{&MiniAppBinding{}, "MiniAppBinding"},
+		{&MiniTextTestAttempt{}, "MiniTextTestAttempt"},
 		{&AgentConnectRequest{}, "AgentConnectRequest"},
 		{&ExternalIdentityClaim{}, "ExternalIdentityClaim"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
@@ -631,6 +643,16 @@ PRIMARY KEY (` + "`id`" + `)
 		}
 	}
 	return nil
+}
+
+// migrateTokenSource adds the Mini Program ownership marker without changing
+// existing rows. GORM's migrator provides compatible ADD COLUMN behavior for
+// SQLite, MySQL, and PostgreSQL; a later AutoMigrate creates the index.
+func migrateTokenSource() error {
+	if !DB.Migrator().HasTable(&Token{}) || DB.Migrator().HasColumn(&Token{}, "source") {
+		return nil
+	}
+	return DB.Migrator().AddColumn(&Token{}, "Source")
 }
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text

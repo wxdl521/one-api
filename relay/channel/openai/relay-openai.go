@@ -2,7 +2,6 @@ package openai
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -195,8 +194,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	defer service.CloseResponseBodyGracefully(resp)
 
 	var simpleResponse dto.OpenAITextResponse
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := common.ReadRelayResponseBody(c.Request.Context(), resp.Body)
 	if err != nil {
+		if common.SensitiveRelayPayloadLoggingSuppressed(c.Request.Context()) {
+			return nil, types.NewError(err, types.ErrorCodeReadResponseBodyFailed)
+		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	if !service.IsPromptShotCompatibleRequest(c) {

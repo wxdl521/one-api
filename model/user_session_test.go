@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,40 @@ func (setMiniRedisTimeOnEvalHook) BeforeProcessPipeline(ctx context.Context, _ [
 }
 
 func (setMiniRedisTimeOnEvalHook) AfterProcessPipeline(context.Context, []redis.Cmder) error {
+	return nil
+}
+
+type failUserSessionCacheStatusHook struct {
+	status   string
+	err      error
+	attempts int
+}
+
+func (hook *failUserSessionCacheStatusHook) BeforeProcess(ctx context.Context, cmd redis.Cmder) (context.Context, error) {
+	if cmd.Name() != "eval" {
+		return ctx, nil
+	}
+	args := cmd.Args()
+	if len(args) <= 8 {
+		return ctx, nil
+	}
+	status, ok := args[8].(string)
+	if !ok || status != hook.status {
+		return ctx, nil
+	}
+	hook.attempts++
+	return ctx, hook.err
+}
+
+func (*failUserSessionCacheStatusHook) AfterProcess(context.Context, redis.Cmder) error {
+	return nil
+}
+
+func (*failUserSessionCacheStatusHook) BeforeProcessPipeline(ctx context.Context, _ []redis.Cmder) (context.Context, error) {
+	return ctx, nil
+}
+
+func (*failUserSessionCacheStatusHook) AfterProcessPipeline(context.Context, []redis.Cmder) error {
 	return nil
 }
 
@@ -270,6 +305,151 @@ func TestRotateUserSessionRefreshRaceAndReuse(t *testing.T) {
 	require.NoError(t, getErr)
 	assert.Equal(t, UserSessionStatusRevoked, stored.Status)
 	assert.Equal(t, "refresh_reuse", stored.RevokedReason)
+}
+
+func TestRenewMiniAppUserSessionHasOneWinnerAndRollsBackOnCreateFailure(t *testing.T) {
+	t.Run("one winner", func(t *testing.T) {
+		setupUserSessionTest(t)
+		const userID = 1013
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		successors := []*UserSession{
+			newTestUserSession("miniapp-renew-successor-a", userID, now),
+			newTestUserSession("miniapp-renew-successor-b", userID, now),
+		}
+		for _, successor := range successors {
+			successor.LoginMethod = "wechat-miniapp"
+		}
+		start := make(chan struct{})
+		errorsByAttempt := make(chan error, len(successors))
+		var waitGroup sync.WaitGroup
+		for _, successor := range successors {
+			waitGroup.Add(1)
+			go func(successor *UserSession) {
+				defer waitGroup.Done()
+				<-start
+				_, err := RenewMiniAppUserSession(userID, prior.SID, successor)
+				errorsByAttempt <- err
+			}(successor)
+		}
+		close(start)
+		waitGroup.Wait()
+		close(errorsByAttempt)
+
+		successes := 0
+		for err := range errorsByAttempt {
+			if err == nil {
+				successes++
+				continue
+			}
+			assert.ErrorIs(t, err, ErrUserSessionInactive)
+		}
+		assert.Equal(t, 1, successes)
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusRevoked, storedPrior.Status)
+		var activeSuccessors int64
+		require.NoError(t, DB.Model(&UserSession{}).Where("user_id = ? AND status = ?", userID, UserSessionStatusActive).Count(&activeSuccessors).Error)
+		assert.Equal(t, int64(1), activeSuccessors)
+	})
+
+	t.Run("create failure rolls back", func(t *testing.T) {
+		setupUserSessionTest(t)
+		const userID = 1014
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-rollback-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		forcedErr := errors.New("forced miniapp successor create failure")
+		callbackName := "test:fail_miniapp_successor_create"
+		callbackRegistered := true
+		require.NoError(t, DB.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+			if tx.Statement != nil && tx.Statement.Table == "user_sessions" {
+				tx.AddError(forcedErr)
+			}
+		}))
+		t.Cleanup(func() {
+			if callbackRegistered {
+				_ = DB.Callback().Create().Remove(callbackName)
+			}
+		})
+		successor := newTestUserSession("miniapp-renew-rollback-successor", userID, now)
+		successor.LoginMethod = "wechat-miniapp"
+
+		_, err := RenewMiniAppUserSession(userID, prior.SID, successor)
+
+		require.ErrorIs(t, err, forcedErr)
+		require.NoError(t, DB.Callback().Create().Remove(callbackName))
+		callbackRegistered = false
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusActive, storedPrior.Status)
+		var successorCount int64
+		require.NoError(t, DB.Model(&UserSession{}).Where("sid = ?", successor.SID).Count(&successorCount).Error)
+		assert.Zero(t, successorCount)
+	})
+
+	t.Run("cached prior is fenced before successor commits", func(t *testing.T) {
+		setupUserSessionTest(t)
+		useUserCacheMiniRedis(t)
+		const userID = 1015
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-cached-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		_, err := GetUserSessionCached(prior.SID)
+		require.NoError(t, err)
+		finalizeFailure := errors.New("forced final miniapp deny-cache publication failure")
+		hook := &failUserSessionCacheStatusHook{status: UserSessionStatusRevoked, err: finalizeFailure}
+		common.RDB.AddHook(hook)
+		successor := newTestUserSession("miniapp-renew-cached-successor", userID, now)
+		successor.LoginMethod = "wechat-miniapp"
+
+		_, err = RenewMiniAppUserSession(userID, prior.SID, successor)
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, hook.attempts)
+		_, err = GetUserSessionCached(prior.SID)
+		assert.ErrorIs(t, err, ErrUserSessionInactive)
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusRevoked, storedPrior.Status)
+	})
+
+	t.Run("deny-fence failure aborts renewal before database mutation", func(t *testing.T) {
+		setupUserSessionTest(t)
+		useUserCacheMiniRedis(t)
+		const userID = 1016
+		createUserSessionTestUser(t, userID, 1)
+		now := time.Now().Unix()
+		prior := newTestUserSession("miniapp-renew-deny-failure-prior", userID, now)
+		prior.LoginMethod = "wechat-miniapp"
+		require.NoError(t, CreateUserSession(prior))
+		denyFailure := errors.New("forced miniapp deny-fence publication failure")
+		hook := &failUserSessionCacheStatusHook{status: UserSessionStatusRevoking, err: denyFailure}
+		common.RDB.AddHook(hook)
+		successor := newTestUserSession("miniapp-renew-deny-failure-successor", userID, now)
+		successor.LoginMethod = "wechat-miniapp"
+
+		_, err := RenewMiniAppUserSession(userID, prior.SID, successor)
+
+		require.ErrorIs(t, err, denyFailure)
+		assert.Equal(t, 1, hook.attempts)
+		var storedPrior UserSession
+		require.NoError(t, DB.First(&storedPrior, "sid = ?", prior.SID).Error)
+		assert.Equal(t, UserSessionStatusActive, storedPrior.Status)
+		var successorCount int64
+		require.NoError(t, DB.Model(&UserSession{}).Where("sid = ?", successor.SID).Count(&successorCount).Error)
+		assert.Zero(t, successorCount)
+		cachedPrior, err := GetUserSessionCached(prior.SID)
+		require.NoError(t, err)
+		assert.Equal(t, prior.SID, cachedPrior.SID)
+	})
 }
 
 func TestUserSessionPreviousRefreshHashNormalizesLegacyPadding(t *testing.T) {

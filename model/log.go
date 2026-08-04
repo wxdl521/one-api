@@ -340,6 +340,23 @@ type RecordConsumeLogParams struct {
 	Other            map[string]interface{} `json:"other"`
 }
 
+// GetConsumeLogByRequestID returns the shared relay consumption record used
+// as a safe Mini Program billing correlation. It never reads request bodies or
+// generated output because neither is persisted in logs.
+func GetConsumeLogByRequestID(userID int, requestID string) (*Log, error) {
+	if userID <= 0 || strings.TrimSpace(requestID) == "" || LOG_DB == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var log Log
+	err := LOG_DB.Where("user_id = ? AND type = ? AND request_id = ?", userID, LogTypeConsume, requestID).
+		Order("id desc").
+		First(&log).Error
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
 	if !common.LogConsumeEnabled {
 		return

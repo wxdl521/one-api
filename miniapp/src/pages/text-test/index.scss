@@ -1,0 +1,81 @@
+.text-test-shell {
+  background: #f8fafc;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  min-height: 100vh;
+  padding: 40rpx 32rpx;
+}
+
+.text-test-title {
+  color: #111827;
+  font-size: 40rpx;
+  font-weight: 600;
+}
+
+.text-test-description,
+.text-test-label,
+.text-test-count,
+.text-test-loading,
+.text-test-empty,
+.text-test-status-card {
+  color: #4b5563;
+  font-size: 26rpx;
+}
+
+.text-test-privacy-card,
+.text-test-form,
+.text-test-status-card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 28rpx;
+}
+
+.text-test-privacy-card {
+  background: #fffbeb;
+  border: 1rpx solid #f59e0b;
+  color: #92400e;
+  font-size: 26rpx;
+}
+
+.text-test-picker,
+.text-test-input {
+  border: 1rpx solid #d1d5db;
+  border-radius: 10rpx;
+  box-sizing: border-box;
+  color: #111827;
+  font-size: 28rpx;
+  min-height: 76rpx;
+  padding: 18rpx 20rpx;
+  width: 100%;
+}
+
+.text-test-input {
+  min-height: 240rpx;
+}
+
+.text-test-count {
+  text-align: right;
+}
+
+.text-test-submit {
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 28rpx;
+  margin: 0;
+}
+
+.text-test-error {
+  color: #b91c1c;
+  font-size: 26rpx;
+}
+
+.text-test-status-message {
+  color: #111827;
+  font-size: 28rpx;
+  font-weight: 600;
+}

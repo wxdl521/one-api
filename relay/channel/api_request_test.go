@@ -1,14 +1,67 @@
 package channel
 
 import (
+	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	relaycommon "github.com/QuantumNous/the-one/relay/common"
+	"github.com/QuantumNous/the-one/relaykit/dto"
+	"github.com/QuantumNous/the-one/relaykit/types"
+	"github.com/QuantumNous/the-one/service"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 )
+
+type apiRequestContextTestAdaptor struct {
+	url string
+}
+
+func (a *apiRequestContextTestAdaptor) Init(*relaycommon.RelayInfo) {}
+func (a *apiRequestContextTestAdaptor) GetRequestURL(*relaycommon.RelayInfo) (string, error) {
+	return a.url, nil
+}
+func (*apiRequestContextTestAdaptor) SetupRequestHeader(*gin.Context, *http.Header, *relaycommon.RelayInfo) error {
+	return nil
+}
+func (*apiRequestContextTestAdaptor) ConvertOpenAIRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeneralOpenAIRequest) (any, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) ConvertRerankRequest(*gin.Context, int, dto.RerankRequest) (any, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) ConvertEmbeddingRequest(*gin.Context, *relaycommon.RelayInfo, dto.EmbeddingRequest) (any, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) ConvertAudioRequest(*gin.Context, *relaycommon.RelayInfo, dto.AudioRequest) (io.Reader, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) ConvertImageRequest(*gin.Context, *relaycommon.RelayInfo, dto.ImageRequest) (any, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) ConvertOpenAIResponsesRequest(*gin.Context, *relaycommon.RelayInfo, dto.OpenAIResponsesRequest) (any, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) DoRequest(*gin.Context, *relaycommon.RelayInfo, io.Reader) (any, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) DoResponse(*gin.Context, *http.Response, *relaycommon.RelayInfo) (any, *types.TheOneError) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) GetModelList() []string { return nil }
+func (*apiRequestContextTestAdaptor) GetChannelName() string { return "test" }
+func (*apiRequestContextTestAdaptor) ConvertClaudeRequest(*gin.Context, *relaycommon.RelayInfo, *dto.ClaudeRequest) (any, error) {
+	return nil, nil
+}
+func (*apiRequestContextTestAdaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
+	return nil, nil
+}
 
 func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	t.Parallel()
@@ -31,6 +84,115 @@ func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	headers, err := processHeaderOverride(info, ctx)
 	require.NoError(t, err)
 	require.Empty(t, headers)
+}
+
+func TestDoApiRequestPropagatesRequestContextCancellationToUpstream(t *testing.T) {
+	service.InitHttpClient()
+	upstreamStarted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(upstreamStarted)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(200 * time.Millisecond):
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(requestContext)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelSetting: dto.ChannelSettings{}}}
+	adaptor := &apiRequestContextTestAdaptor{url: server.URL}
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := DoApiRequest(adaptor, ginContext, info, strings.NewReader(`{"model":"gpt-mini"}`))
+		result <- err
+	}()
+	<-upstreamStarted
+	cancel()
+
+	require.Error(t, <-result)
+}
+
+func TestDoWssRequestPropagatesRequestContextCancellationToUpstream(t *testing.T) {
+	upstreamStarted := make(chan struct{})
+	dialStop, stopDial := context.WithCancel(context.Background())
+	t.Cleanup(stopDial)
+	previousNetDialContext := websocket.DefaultDialer.NetDialContext
+	previousProxy := websocket.DefaultDialer.Proxy
+	websocket.DefaultDialer.Proxy = nil
+	websocket.DefaultDialer.NetDialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		close(upstreamStarted)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-dialStop.Done():
+			return nil, dialStop.Err()
+		}
+	}
+	t.Cleanup(func() {
+		websocket.DefaultDialer.NetDialContext = previousNetDialContext
+		websocket.DefaultDialer.Proxy = previousProxy
+	})
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodGet, "/v1/realtime", nil).WithContext(requestContext)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelSetting: dto.ChannelSettings{}}}
+	adaptor := &apiRequestContextTestAdaptor{url: "ws://relay.test/v1/realtime"}
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := DoWssRequest(adaptor, ginContext, info, nil)
+		result <- err
+	}()
+	<-upstreamStarted
+	cancel()
+
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("websocket dial did not stop after request context cancellation")
+	}
+}
+
+func TestDoWssRequestConnectsWithActiveRequestContext(t *testing.T) {
+	releaseUpstream := make(chan struct{})
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		<-releaseUpstream
+	}))
+	t.Cleanup(func() {
+		close(releaseUpstream)
+		server.Close()
+	})
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodGet, "/v1/realtime", nil)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelSetting: dto.ChannelSettings{}}}
+	adaptor := &apiRequestContextTestAdaptor{url: "ws" + strings.TrimPrefix(server.URL, "http")}
+
+	conn, err := DoWssRequest(adaptor, ginContext, info, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.NoError(t, conn.Close())
 }
 
 func TestProcessHeaderOverride_ChannelTestSkipsClientHeaderPlaceholder(t *testing.T) {

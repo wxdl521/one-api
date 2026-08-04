@@ -1,0 +1,239 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const taro = vi.hoisted(() => ({
+  login: vi.fn(),
+  request: vi.fn(),
+}))
+
+vi.mock('@tarojs/taro', () => ({ default: taro, ...taro }))
+
+const apiBase = globalThis as typeof globalThis & {
+  __MINIAPP_API_BASE_URL__?: string
+  __MINIAPP_BINDING_ORIGIN__?: string
+}
+
+async function loadService(bindingOrigin = 'https://console.example.com') {
+  apiBase.__MINIAPP_API_BASE_URL__ = 'https://gateway.example.com'
+  apiBase.__MINIAPP_BINDING_ORIGIN__ = bindingOrigin
+  return import('./auth-service')
+}
+
+describe('WeChat mini program authentication service', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    taro.login.mockReset()
+    taro.request.mockReset()
+  })
+
+  afterEach(async () => {
+    const { clearMiniAppSession } = await import('../../lib/session')
+    clearMiniAppSession()
+    delete apiBase.__MINIAPP_API_BASE_URL__
+    delete apiBase.__MINIAPP_BINDING_ORIGIN__
+  })
+
+  it('exchanges a wx.login code and keeps a normal session in memory', async () => {
+    const { loginWithWechat } = await loadService()
+    taro.login.mockResolvedValue({ code: 'wx-login-code' })
+    taro.request.mockResolvedValue({
+      statusCode: 200,
+      header: {},
+      data: {
+        success: true,
+        message: '',
+        data: {
+          state: 'authenticated',
+          session: {
+            access_token: 'miniapp-access-token',
+            access_expires_at: Math.floor(Date.now() / 1000) + 60,
+            session: { sid: 'miniapp-session-id' },
+          },
+        },
+      },
+    })
+
+    await expect(loginWithWechat()).resolves.toEqual({ kind: 'authenticated' })
+    expect(taro.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://gateway.example.com/api/miniapp/v1/auth/wechat',
+        method: 'POST',
+        data: { code: 'wx-login-code' },
+      }),
+    )
+
+    const { getMiniAppSession } = await import('../../lib/session')
+    expect(getMiniAppSession()).toMatchObject({
+      accessToken: 'miniapp-access-token',
+      sid: 'miniapp-session-id',
+    })
+  })
+
+  it('holds an unbound identity ticket in memory for the binding flow', async () => {
+    const { getPendingIdentityTicket, loginWithWechat } = await loadService()
+    taro.login.mockResolvedValue({ code: 'wx-login-code' })
+    taro.request.mockResolvedValue({
+      statusCode: 200,
+      header: {},
+      data: {
+        success: true,
+        message: '',
+        data: { state: 'pending', pending_ticket: 'opaque-pending-ticket' },
+      },
+    })
+
+    await expect(loginWithWechat()).resolves.toEqual({ kind: 'pending' })
+    expect(getPendingIdentityTicket()).toBe('opaque-pending-ticket')
+    const { getMiniAppSession } = await import('../../lib/session')
+    expect(getMiniAppSession()).toBeNull()
+  })
+
+  it('uses the pending ticket only where the binding API requires it', async () => {
+    const { createBinding, getBindingStatus, setPendingIdentityTicket } = await loadService()
+    setPendingIdentityTicket('opaque-pending-ticket')
+    taro.request
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        header: {},
+        data: {
+          success: true,
+          message: '',
+          data: {
+            binding_id: 'binding-id',
+            web_url: 'https://console.example.com/miniapp-bind#binding_ticket=opaque-browser-ticket',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        header: {},
+        data: { success: true, message: '', data: { id: 'binding-id', status: 'pending' } },
+      })
+
+    await expect(createBinding()).resolves.toEqual({
+      bindingId: 'binding-id',
+      webUrl: 'https://console.example.com/miniapp-bind#binding_ticket=opaque-browser-ticket',
+    })
+    await expect(getBindingStatus('binding-id')).resolves.toBe('pending')
+
+    expect(taro.request.mock.calls[0]?.[0]).toMatchObject({
+      method: 'POST',
+      data: { pending_identity_ticket: 'opaque-pending-ticket' },
+    })
+    expect(taro.request.mock.calls[0]?.[0].header.Authorization).toBeUndefined()
+    expect(taro.request.mock.calls[1]?.[0]).toMatchObject({
+      method: 'GET',
+      header: { Authorization: 'Bearer opaque-pending-ticket' },
+    })
+  })
+
+  it('revokes the mini program session before clearing its local credential', async () => {
+    const { logoutMiniApp } = await loadService()
+    const { getMiniAppSession, setMiniAppSession } = await import('../../lib/session')
+    setMiniAppSession({
+      accessToken: 'miniapp-access-token',
+      accessExpiresAt: Math.floor(Date.now() / 1000) + 60,
+      sid: 'miniapp-session-id',
+    })
+    taro.request.mockResolvedValue({
+      statusCode: 200,
+      header: {},
+      data: { success: true, message: '', data: { revoked: true } },
+    })
+
+    await logoutMiniApp()
+
+    expect(taro.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://gateway.example.com/api/miniapp/v1/auth/logout',
+        method: 'POST',
+        header: expect.objectContaining({
+          Authorization: 'Bearer miniapp-access-token',
+        }),
+      }),
+    )
+    expect(getMiniAppSession()).toBeNull()
+  })
+
+  it('fails with a safe error when wx.login does not provide a code', async () => {
+    const { loginWithWechat } = await loadService()
+    taro.login.mockResolvedValue({ code: '' })
+
+    await expect(loginWithWechat()).rejects.toMatchObject({
+      code: 'MINIAPP_WECHAT_LOGIN_UNAVAILABLE',
+    })
+    expect(taro.request).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, 1, {}, '   '])('rejects a non-string or empty wx.login code: %j', async (code) => {
+    const { loginWithWechat } = await loadService()
+    taro.login.mockResolvedValue({ code })
+
+    await expect(loginWithWechat()).rejects.toMatchObject({
+      code: 'MINIAPP_WECHAT_LOGIN_UNAVAILABLE',
+    })
+    expect(taro.request).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { access_token: undefined, access_expires_at: Math.floor(Date.now() / 1000) + 60, session: { sid: 'sid' } },
+    { access_token: '', access_expires_at: Math.floor(Date.now() / 1000) + 60, session: { sid: 'sid' } },
+    { access_token: 1, access_expires_at: Math.floor(Date.now() / 1000) + 60, session: { sid: 'sid' } },
+    { access_token: 'token', access_expires_at: Math.floor(Date.now() / 1000) - 1, session: { sid: 'sid' } },
+    { access_token: 'token', access_expires_at: 'future', session: { sid: 'sid' } },
+    { access_token: 'token', access_expires_at: Math.floor(Date.now() / 1000) + 60, session: { sid: '' } },
+    { access_token: 'token', access_expires_at: Math.floor(Date.now() / 1000) + 60, session: { sid: 1 } },
+  ])('fails closed for malformed authenticated session payload: %j', async (session) => {
+    const { loginWithWechat } = await loadService()
+    taro.login.mockResolvedValue({ code: 'wx-login-code' })
+    taro.request.mockResolvedValue({
+      statusCode: 200,
+      header: {},
+      data: { success: true, message: '', data: { state: 'authenticated', session } },
+    })
+
+    await expect(loginWithWechat()).rejects.toMatchObject({
+      code: 'MINIAPP_INVALID_AUTH_RESPONSE',
+    })
+    const { getMiniAppSession } = await import('../../lib/session')
+    expect(getMiniAppSession()).toBeNull()
+  })
+
+  it.each([
+    'https://attacker.example/miniapp-bind#binding_ticket=opaque-browser-ticket',
+    'https://console.example.com/not-miniapp-bind#binding_ticket=opaque-browser-ticket',
+    'https://browser-ticket@console.example.com/miniapp-bind#binding_ticket=opaque-browser-ticket',
+  ])('rejects an untrusted binding web-view URL: %s', async (webUrl) => {
+    const { createBinding, setPendingIdentityTicket } = await loadService()
+    setPendingIdentityTicket('opaque-pending-ticket')
+    taro.request.mockResolvedValue({
+      statusCode: 200,
+      header: {},
+      data: { success: true, message: '', data: { binding_id: 'binding-id', web_url: webUrl } },
+    })
+
+    await expect(createBinding()).rejects.toMatchObject({
+      code: 'MINIAPP_INVALID_BINDING_RESPONSE',
+    })
+  })
+
+  it('rejects a trusted binding origin with URL credentials', async () => {
+    const { createBinding, setPendingIdentityTicket } = await loadService('https://config-secret@console.example.com')
+    setPendingIdentityTicket('opaque-pending-ticket')
+    taro.request.mockResolvedValue({
+      statusCode: 200,
+      header: {},
+      data: {
+        success: true,
+        message: '',
+        data: {
+          binding_id: 'binding-id',
+          web_url: 'https://console.example.com/miniapp-bind#binding_ticket=opaque-browser-ticket',
+        },
+      },
+    })
+
+    await expect(createBinding()).rejects.toMatchObject({
+      code: 'MINIAPP_BINDING_CONFIGURATION_ERROR',
+    })
+  })
+})

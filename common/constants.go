@@ -29,6 +29,34 @@ var DataExportEnabled = true
 var DataExportInterval = 5         // unit: minute
 var DataExportDefaultTime = "hour" // unit: minute
 var DefaultCollapseSidebar = false // default value of collapse sidebar
+var MiniProgramEnabled = false
+var MiniProgramTextTestEnabled = false
+
+// GetMiniProgramFeatureFlags returns the Mini Program feature flags from one synchronized snapshot.
+func GetMiniProgramFeatureFlags() (miniProgramEnabled bool, miniProgramTextTestEnabled bool) {
+	OptionMapRWMutex.RLock()
+	defer OptionMapRWMutex.RUnlock()
+	return MiniProgramEnabled, MiniProgramTextTestEnabled
+}
+
+const DefaultMiniAppHTTPTimeout = 10 * time.Second
+
+var WeChatMiniAppAppID = ""
+var WeChatMiniAppAppSecret = ""
+
+// WeChatMiniAppSubjectHMACKey is a persistent, deployment-stable secret used
+// only to derive versioned Mini Program subject digests. It must not be
+// generated from the process/session secret because identity mappings must
+// survive restarts.
+var WeChatMiniAppSubjectHMACKey = ""
+
+// MiniAppBindWebBaseURL must be an absolute URL whose path is /miniapp-bind.
+var MiniAppBindWebBaseURL = ""
+var MiniAppHTTPTimeout = DefaultMiniAppHTTPTimeout
+
+// MiniAppAllowedModels is a comma-separated server-side allowlist for Mini
+// Program token model restrictions. An empty value denies every model.
+var MiniAppAllowedModels = ""
 
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 

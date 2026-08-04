@@ -51,6 +51,9 @@ func TestAuthFlowIsBoundAndConsumedOnce(t *testing.T) {
 
 	_, err = ConsumeAuthFlow(token, AuthFlowMatch{Purpose: AuthFlowPurposeOAuth})
 	assert.ErrorIs(t, err, ErrAuthFlowConsumed)
+	state, err := GetAuthFlowState(token, AuthFlowMatch{Purpose: AuthFlowPurposeOAuth, Provider: "github"})
+	require.NoError(t, err)
+	require.NotNil(t, state.ConsumedAt)
 }
 
 func TestAuthFlowExpiryIsEnforced(t *testing.T) {
@@ -106,4 +109,61 @@ func TestConsumeAuthFlowWithActionRollsBackTogether(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, flow.ConsumedAt)
 	require.NoError(t, ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, "assertion-a", time.Now().Add(time.Minute)))
+}
+
+func TestConsumeAuthFlowWithTxRollsBackMultipleFlowConsumption(t *testing.T) {
+	truncateTables(t)
+	firstToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeMiniAppBind, ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	secondToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeMiniAppPendingIdentity, ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	actionErr := errors.New("claim failed")
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		_, err := ConsumeAuthFlowWithTx(tx, firstToken, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppBind}, func(tx *gorm.DB, _ *AuthFlow) error {
+			_, err := ConsumeAuthFlowWithTx(tx, secondToken, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppPendingIdentity}, nil)
+			if err != nil {
+				return err
+			}
+			return actionErr
+		})
+		return err
+	})
+	assert.ErrorIs(t, err, actionErr)
+	for _, flow := range []struct {
+		token   string
+		purpose string
+	}{{firstToken, AuthFlowPurposeMiniAppBind}, {secondToken, AuthFlowPurposeMiniAppPendingIdentity}} {
+		stored, err := GetAuthFlow(flow.token, AuthFlowMatch{Purpose: flow.purpose})
+		require.NoError(t, err)
+		assert.Nil(t, stored.ConsumedAt)
+	}
+}
+
+func TestConsumeAuthFlowByIDWithTxConsumesOnlyTheLinkedFlow(t *testing.T) {
+	truncateTables(t)
+	firstToken, firstFlow, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeMiniAppPendingIdentity, ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+	secondToken, _, err := CreateAuthFlow(AuthFlowCreate{
+		Purpose: AuthFlowPurposeMiniAppPendingIdentity, ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		_, err := ConsumeAuthFlowByIDWithTx(tx, firstFlow.Id, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppPendingIdentity}, nil)
+		return err
+	})
+	require.NoError(t, err)
+
+	_, err = GetAuthFlow(firstToken, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppPendingIdentity})
+	assert.ErrorIs(t, err, ErrAuthFlowConsumed)
+	second, err := GetAuthFlow(secondToken, AuthFlowMatch{Purpose: AuthFlowPurposeMiniAppPendingIdentity})
+	require.NoError(t, err)
+	assert.Nil(t, second.ConsumedAt)
 }

@@ -53,6 +53,65 @@ func CreateLoginSessionAtAuthVersion(userID int, expectedAuthVersion int64, logi
 	return createLoginSession(userID, expectedAuthVersion, loginMethod, ip, userAgent)
 }
 
+// CreateMiniAppLoginSession creates a standard server-side session for the
+// Mini Program, but deliberately never releases a refresh credential. Its
+// refresh hash is an unrecoverable server-only value to satisfy the shared
+// session schema while renewal remains bound to a fresh WeChat code and SID.
+func CreateMiniAppLoginSession(userID int, ip, userAgent string) (*AuthBundle, error) {
+	if AccessTokenTTL > 30*time.Minute {
+		return nil, ErrLoginSessionInvalid
+	}
+	user, err := model.GetUserCache(userID)
+	if err != nil {
+		return nil, err
+	}
+	if user.Status != common.UserStatusEnabled || user.AuthVersion <= 0 {
+		return nil, ErrLoginSessionInvalid
+	}
+	now := time.Now().Unix()
+	activeCount, err := model.CountActiveUserSessions(userID, now)
+	if err != nil {
+		return nil, err
+	}
+	if activeCount >= int64(common.UserSessionActiveLimit) {
+		return nil, model.ErrUserSessionLimit
+	}
+	issuanceCount, err := model.CountUserSessionsCreatedSince(userID, now-common.UserSessionIssuanceWindowSeconds)
+	if err != nil {
+		return nil, err
+	}
+	if issuanceCount >= int64(common.UserSessionIssuanceLimit) {
+		return nil, model.ErrUserSessionIssuanceLimit
+	}
+	refreshSecret, err := common.GenerateRandomCharsKey(64)
+	if err != nil {
+		return nil, err
+	}
+	session := &model.UserSession{
+		SID:             uuid.NewString(),
+		UserID:          userID,
+		Version:         1,
+		UserAuthVersion: user.AuthVersion,
+		Status:          model.UserSessionStatusActive,
+		RefreshHash:     hashRefreshSecret(refreshSecret),
+		LoginMethod:     "wechat-miniapp",
+		IP:              truncateAuthMetadata(ip, 64),
+		UserAgent:       truncateAuthMetadata(userAgent, 512),
+		CreatedAt:       now,
+		LastActiveAt:    now,
+		ExpiresAt:       time.Unix(now, 0).Add(LoginSessionTTL).Unix(),
+	}
+	if err := model.CreateUserSession(session); err != nil {
+		return nil, err
+	}
+	bundle, err := issueAuthBundle(session, "", true)
+	if err != nil {
+		_, _ = model.RevokeUserSession(userID, session.SID, "token_issue_failed")
+		return nil, err
+	}
+	return bundle, nil
+}
+
 func createLoginSession(userID int, expectedAuthVersion int64, loginMethod, ip, userAgent string) (*AuthBundle, error) {
 	user, err := model.GetUserCache(userID)
 	if err != nil {

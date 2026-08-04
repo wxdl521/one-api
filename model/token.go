@@ -28,8 +28,13 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	Source             string         `json:"source" gorm:"type:varchar(32);index"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
+
+const TokenSourceMiniApp = "miniapp"
+
+var ErrTokenLimitReached = errors.New("token limit reached")
 
 func (token *Token) Clean() {
 	token.Key = ""
@@ -78,11 +83,57 @@ func (token *Token) GetIpLimits() []string {
 	return ipLimits
 }
 
+// legacyUserTokenQuery is the shared ownership boundary for dashboard token
+// operations. Mini Program tokens are managed exclusively through the scoped
+// Mini Program APIs, while legacy and future non-Mini-Program sources remain
+// available to the dashboard.
+func legacyUserTokenQuery(db *gorm.DB, userId int) *gorm.DB {
+	return db.Where("user_id = ?", userId).
+		Where("(source IS NULL OR source <> ?)", TokenSourceMiniApp)
+}
+
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err = legacyUserTokenQuery(DB, userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
+}
+
+// GetMiniAppUserTokens returns only tokens created through the Mini Program.
+// The source predicate complements the user predicate so a caller can never
+// enumerate dashboard-created tokens through the Mini Program surface.
+func GetMiniAppUserTokens(userId int, startIdx int, num int) ([]*Token, int64, error) {
+	if userId <= 0 {
+		return nil, 0, errors.New("user id is empty")
+	}
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if num <= 0 || num > searchHardLimit {
+		num = searchHardLimit
+	}
+
+	query := DB.Where("user_id = ? AND source = ?", userId, TokenSourceMiniApp)
+	var total int64
+	if err := query.Model(&Token{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var tokens []*Token
+	if err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error; err != nil {
+		return nil, 0, err
+	}
+	return tokens, total, nil
+}
+
+// GetMiniAppUserTokenByID is the ownership and source boundary for every
+// Mini Program mutation. Callers must not use the generic token lookup here.
+func GetMiniAppUserTokenByID(userId int, id int) (*Token, error) {
+	if userId <= 0 || id <= 0 {
+		return nil, errors.New("token id or user id is empty")
+	}
+	token := &Token{}
+	err := DB.Where("id = ? AND user_id = ? AND source = ?", id, userId, TokenSourceMiniApp).First(token).Error
+	return token, err
 }
 
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。
@@ -158,7 +209,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := legacyUserTokenQuery(DB.Model(&Token{}), userId)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -236,9 +287,9 @@ func GetTokenByIds(id int, userId int) (*Token, error) {
 	if id == 0 || userId == 0 {
 		return nil, errors.New("id 或 userId 为空！")
 	}
-	token := Token{Id: id, UserId: userId}
+	token := Token{}
 	var err error = nil
-	err = DB.First(&token, "id = ? and user_id = ?", id, userId).Error
+	err = legacyUserTokenQuery(DB, userId).First(&token, "id = ?", id).Error
 	return &token, err
 }
 
@@ -287,6 +338,29 @@ func (token *Token) Insert() error {
 	var err error
 	err = DB.Create(token).Error
 	return err
+}
+
+// CreateTokenWithUserLimit serializes each user's token creation so the
+// configured limit is checked against the same transaction that inserts it.
+func CreateTokenWithUserLimit(token *Token, maxTokens int) error {
+	if token == nil || token.UserId <= 0 {
+		return errors.New("token or user id is empty")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", token.UserId).First(&user).Error; err != nil {
+			return err
+		}
+
+		var count int64
+		if err := tx.Model(&Token{}).Where("user_id = ?", token.UserId).Count(&count).Error; err != nil {
+			return err
+		}
+		if count >= int64(maxTokens) {
+			return ErrTokenLimitReached
+		}
+		return tx.Create(token).Error
+	})
 }
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
@@ -371,8 +445,8 @@ func DeleteTokenById(id int, userId int) (err error) {
 	if id == 0 || userId == 0 {
 		return errors.New("id 或 userId 为空！")
 	}
-	token := Token{Id: id, UserId: userId}
-	err = DB.Where(token).First(&token).Error
+	token := Token{}
+	err = legacyUserTokenQuery(DB, userId).First(&token, "id = ?", id).Error
 	if err != nil {
 		return err
 	}
@@ -446,6 +520,12 @@ func CountUserTokens(userId int) (int64, error) {
 	return total, err
 }
 
+func CountLegacyUserTokens(userId int) (int64, error) {
+	var total int64
+	err := legacyUserTokenQuery(DB.Model(&Token{}), userId).Count(&total).Error
+	return total, err
+}
+
 // BatchDeleteTokens 删除指定用户的一组令牌，返回成功删除数量
 func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if len(ids) == 0 {
@@ -455,12 +535,12 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	tx := DB.Begin()
 
 	var tokens []Token
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Find(&tokens).Error; err != nil {
+	if err := legacyUserTokenQuery(tx, userId).Where("id IN (?)", ids).Find(&tokens).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	if err := legacyUserTokenQuery(tx, userId).Where("id IN (?)", ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
@@ -482,8 +562,8 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 
 func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 	var tokens []Token
-	err := DB.Select("id", commonKeyCol).
-		Where("user_id = ? AND id IN (?)", userId, ids).
+	err := legacyUserTokenQuery(DB, userId).Select("id", commonKeyCol).
+		Where("id IN (?)", ids).
 		Find(&tokens).Error
 	return tokens, err
 }

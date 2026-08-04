@@ -21,7 +21,8 @@ import i18n from 'i18next'
 
 import {
   getSavedLanguage,
-  sanitizeAuthRedirect,
+  rememberAuthRedirect,
+  takeRememberedAuthRedirect,
 } from '@/features/auth/lib/auth-redirect'
 import { applyAuthBundle } from '@/lib/api'
 import type { AuthBundle } from '@/stores/auth-store'
@@ -48,14 +49,16 @@ export function useAuthRedirect() {
     }
 
     const targetPath =
-      sanitizeAuthRedirect(redirectTo, window.location.origin) ?? '/dashboard'
+      takeRememberedAuthRedirect(redirectTo, window.location.origin) ??
+      '/dashboard'
     navigate({ href: targetPath, replace: true })
   }
 
   /**
    * Redirect to 2FA page
    */
-  const redirectTo2FA = () => {
+  const redirectTo2FA = (redirectTo?: string) => {
+    rememberAuthRedirect(redirectTo, window.location.origin)
     navigate({ to: '/otp', replace: true })
   }
 

@@ -29,6 +29,7 @@ type tokenAPIResponse struct {
 
 type tokenPageResponse struct {
 	Items []tokenResponseItem `json:"items"`
+	Total int                 `json:"total"`
 }
 
 type tokenResponseItem struct {

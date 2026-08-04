@@ -921,6 +921,8 @@ func deleteUserAuthenticationData(tx *gorm.DB, userId int) error {
 		&UserSession{},
 		&AuthFlow{},
 		&PasskeyCredential{},
+		&WechatMiniIdentity{},
+		&MiniAppBinding{},
 		&Token{},
 	} {
 		if err := tx.Unscoped().Where("user_id = ?", userId).Delete(authenticationData).Error; err != nil {

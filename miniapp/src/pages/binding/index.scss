@@ -1,0 +1,27 @@
+.binding-shell {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 48rpx;
+}
+
+.binding-title {
+  color: #111827;
+  font-size: 44rpx;
+  font-weight: 600;
+}
+
+.binding-description {
+  color: #4b5563;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.binding-error {
+  color: #b91c1c;
+  font-size: 28rpx;
+  text-align: center;
+}

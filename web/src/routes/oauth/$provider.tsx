@@ -32,7 +32,10 @@ import {
   OAUTH_BIND_CALLBACK_MESSAGE,
   OAUTH_BIND_RESULT_MESSAGE,
 } from '@/features/auth/constants'
-import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
+import {
+  sanitizeAuthRedirect,
+  takeRememberedAuthRedirect,
+} from '@/features/auth/lib/auth-redirect'
 import {
   parseTelegramBindCallback,
   postTelegramBindResult,
@@ -165,6 +168,13 @@ function OAuthCallback() {
       void navigate({ href, replace: true })
     }
 
+    const navigateAfterLogin = (target: unknown) => {
+      const href =
+        takeRememberedAuthRedirect(target, window.location.origin) ??
+        '/dashboard'
+      void navigate({ href, replace: true })
+    }
+
     if (!code && !search.error) {
       toast.error(i18next.t('Missing code'))
       safeNavigate('/sign-in', '/sign-in')
@@ -185,7 +195,7 @@ function OAuthCallback() {
         const response = await api.get(`/api/oauth/${provider}`, config)
         if (response.data?.success && isAuthBundle(response.data?.data)) {
           applyAuthBundle(response.data.data)
-          safeNavigate(search.redirect)
+          navigateAfterLogin(search.redirect)
           toast.success(i18next.t('Signed in successfully!'))
           return
         }

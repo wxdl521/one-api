@@ -1,0 +1,67 @@
+{
+  "name": "miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:weapp": "taro build --type weapp --watch",
+    "build:weapp": "taro build --type weapp",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@tarojs/components": "4.2.1",
+    "@tarojs/helper": "4.2.1",
+    "@tarojs/plugin-framework-react": "4.2.1",
+    "@tarojs/plugin-platform-weapp": "4.2.1",
+    "@tarojs/react": "4.2.1",
+    "@tarojs/runtime": "4.2.1",
+    "@tarojs/shared": "4.2.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@babel/core": "7.25.2",
+    "@babel/preset-react": "7.24.7",
+    "@tarojs/cli": "4.2.1",
+    "@tarojs/taro": "4.2.1",
+    "@tarojs/webpack5-runner": "4.2.1",
+    "@types/node": "20.16.1",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@types/react-test-renderer": "18.3.0",
+    "@typescript-eslint/eslint-plugin": "7.18.0",
+    "@typescript-eslint/parser": "7.18.0",
+    "babel-preset-taro": "4.2.1",
+    "eslint": "8.57.1",
+    "react-test-renderer": "18.3.1",
+    "typescript": "5.5.4",
+    "vitest": "2.0.5",
+    "webpack": "5.91.0"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "es2022": true,
+      "node": true
+    },
+    "parser": "@typescript-eslint/parser",
+    "plugins": [
+      "@typescript-eslint"
+    ],
+    "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended"
+    ],
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module",
+      "ecmaFeatures": {
+        "jsx": true
+      }
+    },
+    "ignorePatterns": [
+      "dist/"
+    ]
+  }
+}

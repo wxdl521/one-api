@@ -60,6 +60,7 @@ import type {
 
 interface WalletProps {
   initialShowHistory?: boolean
+  initialPlanID?: number
 }
 
 export function Wallet(props: WalletProps) {
@@ -354,6 +355,7 @@ export function Wallet(props: WalletProps) {
 
               <SubscriptionPlansCard
                 topupInfo={topupInfo}
+                initialPlanID={props.initialPlanID}
                 onAvailabilityChange={handleSubscriptionAvailabilityChange}
                 userQuota={user?.quota}
                 onPurchaseSuccess={fetchUser}

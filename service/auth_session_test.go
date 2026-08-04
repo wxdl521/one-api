@@ -32,7 +32,13 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuthFlow{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.UserSession{},
+		&model.AuthFlow{},
+		&model.WechatMiniIdentity{},
+		&model.MiniAppBinding{},
+	))
 	model.DB = db
 	common.RedisEnabled = false
 	common.UserSessionActiveLimit = common.DefaultUserSessionActiveLimit
@@ -353,6 +359,23 @@ func TestLoginSessionCreateRefreshAndRevoke(t *testing.T) {
 	require.NoError(t, RevokeByRefreshToken(refreshed.RefreshToken, refreshed.Session.SID, "logout"))
 	_, _, err = ValidateLoginSession(identity)
 	assert.True(t, errors.Is(err, ErrLoginSessionRevoked))
+}
+
+func TestCreateMiniAppLoginSessionIssuesNoRefreshCredential(t *testing.T) {
+	useTestSessionSecret(t)
+	user := setupAuthSessionTestDB(t)
+
+	bundle, err := CreateMiniAppLoginSession(user.Id, "127.0.0.1", "miniapp-test")
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, bundle.AccessToken)
+	assert.Empty(t, bundle.RefreshToken)
+	assert.Equal(t, "wechat-miniapp", bundle.Session.LoginMethod)
+	assert.LessOrEqual(t, bundle.AccessExpiresAt-time.Now().Unix(), int64((30 * time.Minute).Seconds()))
+	var session model.UserSession
+	require.NoError(t, model.DB.First(&session, "sid = ?", bundle.Session.SID).Error)
+	assert.Equal(t, "wechat-miniapp", session.LoginMethod)
+	assert.Len(t, session.RefreshHash, 64)
 }
 
 func TestIndependentRedisSessionRevokeConvergesAfterCacheTTL(t *testing.T) {

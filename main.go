@@ -45,6 +45,12 @@ var buildFS embed.FS
 //go:embed web/dist/index.html
 var indexPage []byte
 
+const (
+	miniAppBindingTicketBootstrapPlaceholder = "<!--miniapp-binding-bootstrap-->\n"
+	miniAppBindingTicketBootstrapWindowKey   = "__theOneMiniAppBindingTicket"
+	miniAppCheckoutTicketBootstrapWindowKey  = "__theOneMiniAppCheckoutTicket"
+)
+
 func main() {
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {
@@ -191,6 +197,7 @@ func main() {
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
+	InjectMiniAppBindingTicketBootstrap()
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 
@@ -236,6 +243,11 @@ func main() {
 		model.SaveQuotaDataCache()
 	}
 	common.SysLog("server exited")
+}
+
+func InjectMiniAppBindingTicketBootstrap() {
+	bootstrap := []byte(`<script>(function(){var p=location.pathname,k=null,n=null;if(p==="/miniapp-bind"){k="binding_ticket";n="__theOneMiniAppBindingTicket"}else if(p==="/miniapp-checkout"){k="checkout_ticket";n="__theOneMiniAppCheckoutTicket"}else return;var h=location.hash,s=location.search,t=null;if(!s&&h.length>1){var q=new URLSearchParams(h.slice(1)),v=q.getAll(k);if(q.size===1&&v.length===1){v=v[0].trim();if(v&&v.length<=512)t=v}}if(t!==null)Object.defineProperty(window,n,{configurable:true,value:t,writable:true});if(s||h)history.replaceState(history.state,"",location.pathname)})();</script>` + "\n")
+	indexPage = bytes.ReplaceAll(indexPage, []byte(miniAppBindingTicketBootstrapPlaceholder), bootstrap)
 }
 
 func InjectUmamiAnalytics() {

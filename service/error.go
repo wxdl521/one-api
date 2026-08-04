@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -86,17 +85,21 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (theOneErr *types.TheOneError) {
 	theOneErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
-	redactPromptShot := IsPromptShotRequestContext(ctx)
+	sensitiveRelayPayload := common.SensitiveRelayPayloadLoggingSuppressed(ctx) || IsPromptShotRequestContext(ctx)
 
-	responseBody, err := io.ReadAll(resp.Body)
+	defer CloseResponseBodyGracefully(resp)
+	responseBody, err := common.ReadRelayResponseBody(ctx, resp.Body)
 	if err != nil {
+		theOneErr.Err = err
 		return
 	}
-	CloseResponseBodyGracefully(resp)
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
 	buildErrWithBody := func(message string) error {
+		if sensitiveRelayPayload {
+			return fmt.Errorf("bad response status code %d", resp.StatusCode)
+		}
 		if message == "" {
 			return fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, responseBodyText)
 		}
@@ -105,11 +108,11 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 
 	err = common.Unmarshal(responseBody, &errResponse)
 	if err != nil {
-		if showBodyWhenFail && !redactPromptShot {
+		if showBodyWhenFail && !sensitiveRelayPayload {
 			theOneErr.Err = buildErrWithBody("")
 		} else {
-			if redactPromptShot {
-				logger.LogError(ctx, fmt.Sprintf("bad response status code %d for promptshot request", resp.StatusCode))
+			if sensitiveRelayPayload {
+				logger.LogError(ctx, fmt.Sprintf("bad response status code %d for sensitive relay request", resp.StatusCode))
 			} else {
 				logger.LogError(ctx, fmt.Sprintf("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
 			}
@@ -122,25 +125,31 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
+			if sensitiveRelayPayload {
+				return types.NewOpenAIError(errors.New("upstream request failed"), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+			}
 			theOneErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
-			if showBodyWhenFail && !redactPromptShot {
+			if showBodyWhenFail && !sensitiveRelayPayload {
 				theOneErr.Err = buildErrWithBody(theOneErr.Error())
 			}
 			return
 		}
 	}
 	message := errResponse.ToMessage()
+	if sensitiveRelayPayload {
+		message = "upstream request failed"
+	}
 	if message == "" {
 		// The body parsed as JSON but carried no usable error message; log the
 		// raw body so the upstream failure remains diagnosable.
-		if redactPromptShot {
-			logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message for promptshot request", resp.StatusCode))
+		if sensitiveRelayPayload {
+			logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message for sensitive relay request", resp.StatusCode))
 		} else {
 			logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
 		}
 	}
 	theOneErr = types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
-	if showBodyWhenFail && !redactPromptShot {
+	if showBodyWhenFail && !sensitiveRelayPayload {
 		theOneErr.Err = buildErrWithBody(theOneErr.Error())
 	}
 	return

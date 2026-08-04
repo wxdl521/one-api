@@ -14,6 +14,7 @@ import (
 
 func SetRouter(router *gin.Engine, assets WebAssets) {
 	SetApiRouter(router)
+	SetMiniAppRouter(router)
 	SetMCPRouter(router)
 	SetSkillRouter(router)
 	SetDashboardRouter(router)

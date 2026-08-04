@@ -166,6 +166,116 @@ func CreateUserSession(session *UserSession) error {
 	return nil
 }
 
+// RenewMiniAppUserSession atomically replaces one active Mini Program session
+// with its successor. The prior SID is the compare-and-swap boundary: exactly
+// one contender can create a successor and revoke the prior row.
+func RenewMiniAppUserSession(userID int, priorSID string, successor *UserSession) (*UserSession, error) {
+	now := time.Now().Unix()
+	if userID <= 0 || priorSID == "" || successor == nil || successor.SID == "" || successor.UserID != userID ||
+		successor.UserAuthVersion <= 0 || successor.RefreshHash == "" || successor.LoginMethod != "wechat-miniapp" ||
+		successor.ExpiresAt <= now {
+		return nil, ErrUserSessionInvalid
+	}
+	if successor.Version <= 0 {
+		successor.Version = 1
+	}
+	successor.Status = UserSessionStatusActive
+	successor.RevokedAt = 0
+	successor.RevokedReason = ""
+	if successor.CreatedAt == 0 {
+		successor.CreatedAt = now
+	}
+	if successor.LastActiveAt == 0 {
+		successor.LastActiveAt = now
+	}
+
+	var fenceCandidate UserSession
+	if err := DB.Where("sid = ? AND user_id = ?", priorSID, userID).First(&fenceCandidate).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserSessionInactive
+		}
+		return nil, err
+	}
+	if fenceCandidate.LoginMethod != "wechat-miniapp" || fenceCandidate.Status != UserSessionStatusActive ||
+		fenceCandidate.RevokedAt != 0 || fenceCandidate.ExpiresAt <= now {
+		return nil, ErrUserSessionInactive
+	}
+	// Publish the deny fence before committing the successor. If Redis cannot
+	// deny the prior SID, leave the database untouched rather than committing a
+	// renewal that a stale active cache could still authorize.
+	if err := writeUserSessionDenyFence(&fenceCandidate, UserSessionStatusRevoking, now, "miniapp_renewed"); err != nil {
+		return nil, err
+	}
+
+	var prior UserSession
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Where("sid = ? AND user_id = ?", priorSID, userID).First(&prior).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrUserSessionInactive
+			}
+			return err
+		}
+		if prior.LoginMethod != "wechat-miniapp" || prior.Status != UserSessionStatusActive || prior.RevokedAt != 0 || prior.ExpiresAt <= now {
+			return ErrUserSessionInactive
+		}
+		var user User
+		if err := lockForUpdate(tx).Where("id = ?", userID).First(&user).Error; err != nil {
+			return err
+		}
+		if user.Status != common.UserStatusEnabled || user.AuthVersion != successor.UserAuthVersion {
+			return ErrUserSessionInactive
+		}
+		var issuanceCount int64
+		if err := tx.Model(&UserSession{}).
+			Where("user_id = ? AND created_at > ?", userID, now-common.UserSessionIssuanceWindowSeconds).
+			Count(&issuanceCount).Error; err != nil {
+			return err
+		}
+		if issuanceCount >= int64(common.UserSessionIssuanceLimit) {
+			return ErrUserSessionIssuanceLimit
+		}
+		if err := tx.Create(successor).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&UserSession{}).
+			Where("sid = ? AND user_id = ? AND status = ? AND revoked_at = ? AND expires_at > ? AND login_method = ?",
+				priorSID, userID, UserSessionStatusActive, 0, now, "wechat-miniapp").
+			Updates(map[string]interface{}{
+				"status":         UserSessionStatusRevoked,
+				"revoked_at":     now,
+				"revoked_reason": "miniapp_renewed",
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrUserSessionInactive
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	prior.Status = UserSessionStatusRevoked
+	prior.RevokedAt = now
+	prior.RevokedReason = "miniapp_renewed"
+	if err := writeUserSessionCache(prior.cacheEntry(), time.Time{}); err != nil {
+		common.SysLog("failed to finalize miniapp session renewal revoke tombstone: " + err.Error())
+	}
+	if err := writeUserSessionCache(successor.cacheEntry(), userSessionCacheDeadline()); err != nil {
+		if errors.Is(err, errUserSessionCacheObservationStale) {
+			if confirmErr := confirmUserSessionActiveSnapshot(successor); confirmErr != nil {
+				return nil, confirmErr
+			}
+		} else if errors.Is(err, ErrUserSessionInactive) {
+			return nil, err
+		} else {
+			common.SysLog("failed to populate renewed miniapp user session cache: " + err.Error())
+		}
+	}
+	return successor, nil
+}
+
 func CountActiveUserSessions(userID int, now int64) (int64, error) {
 	if userID <= 0 {
 		return 0, ErrUserSessionInvalid
