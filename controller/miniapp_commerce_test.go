@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/the-one/common"
 	"github.com/QuantumNous/the-one/model"
 	"github.com/QuantumNous/the-one/service"
+	"github.com/QuantumNous/the-one/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -42,12 +43,37 @@ func setupMiniAppCommerceControllerTest(t *testing.T) *gorm.DB {
 	model.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
+	paymentSetting := operation_setting.GetPaymentSetting()
+	previousComplianceConfirmed := paymentSetting.ComplianceConfirmed
+	previousComplianceTermsVersion := paymentSetting.ComplianceTermsVersion
+	paymentSetting.ComplianceConfirmed = true
+	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
 	t.Cleanup(func() {
 		model.DB = previousDB
 		common.SetMainDatabaseType(previousType)
 		common.RedisEnabled = previousRedis
+		paymentSetting.ComplianceConfirmed = previousComplianceConfirmed
+		paymentSetting.ComplianceTermsVersion = previousComplianceTermsVersion
 	})
 	return db
+}
+
+func TestMiniAppPlansAndCheckoutRequirePaymentCompliance(t *testing.T) {
+	db := setupMiniAppCommerceControllerTest(t)
+	plan := &model.SubscriptionPlan{
+		Title: "Compliance plan", PriceAmount: 12.5, Currency: "USD",
+		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true,
+	}
+	require.NoError(t, db.Create(plan).Error)
+	paymentSetting := operation_setting.GetPaymentSetting()
+	paymentSetting.ComplianceConfirmed = false
+
+	plans, err := service.ListMiniAppPlans()
+	require.NoError(t, err)
+	assert.Empty(t, plans)
+
+	_, err = service.StartMiniAppCheckout(1, "mini-checkout-session", "plan", plan.Id)
+	require.ErrorIs(t, err, service.ErrMiniAppCheckoutUnavailable)
 }
 
 func createMiniAppCommerceContext(t *testing.T, path string, userID int) (*gin.Context, *httptest.ResponseRecorder) {

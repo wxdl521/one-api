@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/the-one/common"
 	"github.com/QuantumNous/the-one/model"
+	"github.com/QuantumNous/the-one/setting/operation_setting"
 	"gorm.io/gorm"
 )
 
@@ -69,6 +70,9 @@ type miniAppCheckoutPayload struct {
 // ListMiniAppPlans exposes only enabled, non-administrative plans. It does
 // not return payment-provider identifiers or plan-management controls.
 func ListMiniAppPlans() ([]MiniAppPlan, error) {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		return []MiniAppPlan{}, nil
+	}
 	plans := make([]model.SubscriptionPlan, 0)
 	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		return nil, err
@@ -145,20 +149,15 @@ func ListMiniAppOrders(userID int) ([]MiniAppOrder, error) {
 // authorizes only the existing Web checkout journey. It does not create an
 // order or initiate a payment.
 func StartMiniAppCheckout(userID int, sessionID string, targetType string, targetID int) (*MiniAppCheckoutStart, error) {
-	config, err := RequireMiniProgramConfig()
-	if err != nil {
-		return nil, err
-	}
 	if userID <= 0 || strings.TrimSpace(sessionID) == "" || targetID <= 0 {
 		return nil, ErrMiniAppCheckoutInvalid
-	}
-	checkoutURL, err := url.Parse(config.BindWebBaseURL)
-	if err != nil || checkoutURL.Scheme != "https" || checkoutURL.Host == "" || checkoutURL.User != nil {
-		return nil, ErrMiniAppConfiguration
 	}
 	targetType = strings.TrimSpace(targetType)
 	switch targetType {
 	case miniAppCheckoutPlan:
+		if !operation_setting.IsPaymentComplianceConfirmed() {
+			return nil, ErrMiniAppCheckoutUnavailable
+		}
 		var plan model.SubscriptionPlan
 		if err := model.DB.Where("id = ? AND enabled = ?", targetID, true).First(&plan).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -185,6 +184,15 @@ func StartMiniAppCheckout(userID int, sessionID string, targetType string, targe
 		}
 	default:
 		return nil, ErrMiniAppCheckoutInvalid
+	}
+
+	config, err := RequireMiniProgramConfig()
+	if err != nil {
+		return nil, err
+	}
+	checkoutURL, err := url.Parse(config.BindWebBaseURL)
+	if err != nil || checkoutURL.Scheme != "https" || checkoutURL.Host == "" || checkoutURL.User != nil {
+		return nil, ErrMiniAppConfiguration
 	}
 
 	payload, err := common.Marshal(miniAppCheckoutPayload{TargetType: targetType, TargetID: targetID})
