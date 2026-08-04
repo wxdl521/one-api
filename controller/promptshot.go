@@ -65,7 +65,7 @@ type promptShotSafeResponse struct {
 	Body   []byte
 }
 
-const promptShotContextKey = "promptshot_compat"
+const promptShotContextKey = service.PromptShotCompatContextKey
 
 const promptShotResponseKindContextKey = "promptshot_response_kind"
 

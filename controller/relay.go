@@ -292,7 +292,7 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.TheOneError) {
-	if info.ChannelMeta == nil {
+	if info.ChannelMeta == nil || hasPinnedChannel(c) {
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
 		if !autoBan {
@@ -305,7 +305,7 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			AutoBan: &autoBanInt,
 		}, nil
 	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
+	channel, selectGroup, err := cacheGetRandomSatisfiedChannel(retryParam)
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
@@ -323,8 +323,32 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
+// cacheGetRandomSatisfiedChannel remains a narrow seam for retry-selection
+// tests. Production always uses the service cache selector.
+var cacheGetRandomSatisfiedChannel = service.CacheGetRandomSatisfiedChannel
+
+// hasPinnedChannel identifies requests that have already been bound to a
+// verified channel. They must never be retried against a randomly selected
+// fallback, including channel-classified upstream errors.
+func hasPinnedChannel(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if c.GetBool(promptShotContextKey) {
+		return true
+	}
+	_, pinned := c.Get("specific_channel_id")
+	return pinned
+}
+
 func shouldRetry(c *gin.Context, openaiErr *types.TheOneError, retryTimes int) bool {
 	if openaiErr == nil {
+		return false
+	}
+	// This must precede every error-type branch below: channel errors are
+	// normally retryable, but a PromptShot/explicitly pinned request has a
+	// server-selected verified channel and cannot safely fall back to another.
+	if hasPinnedChannel(c) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
@@ -337,9 +361,6 @@ func shouldRetry(c *gin.Context, openaiErr *types.TheOneError, retryTimes int) b
 		return false
 	}
 	if retryTimes <= 0 {
-		return false
-	}
-	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
 	code := openaiErr.StatusCode
