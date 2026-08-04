@@ -10,6 +10,7 @@ import (
 )
 
 type promptShotContextKey struct{}
+type promptShotResponseLimitContextKey struct{}
 
 const PromptShotCompatContextKey = "promptshot_compat"
 
@@ -29,6 +30,15 @@ func IsPromptShotRequestContext(ctx context.Context) bool {
 	}
 	marked, _ := ctx.Value(promptShotContextKey{}).(bool)
 	return marked
+}
+
+func promptShotResponseLimit(ctx context.Context) int64 {
+	if ctx != nil {
+		if limit, ok := ctx.Value(promptShotResponseLimitContextKey{}).(int64); ok && limit > 0 {
+			return limit
+		}
+	}
+	return PromptShotMaxUpstreamResponseBytes
 }
 
 // IsPromptShotCompatibleRequest accepts both the Gin marker used by relay

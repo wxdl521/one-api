@@ -77,6 +77,11 @@ func GetImageFromUrlWithContext(ctx context.Context, url string) (mimeType strin
 		return "", "", fmt.Errorf("failed to download image: %w", err)
 	}
 	defer resp.Body.Close()
+	if IsPromptShotRequestContext(ctx) {
+		if err := limitPromptShotHTTPResponse(resp, promptShotResponseLimit(ctx)); err != nil {
+			return "", "", err
+		}
+	}
 
 	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/the-one/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,6 +52,46 @@ func TestPromptShotResponseLimiterRejectsChunkedBodyPastConfiguredLimit(t *testi
 
 	contents, err := io.ReadAll(response.Body)
 	assert.Equal(t, []byte("1234"), contents)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrPromptShotUpstreamResponseTooLarge))
+}
+
+func TestGetImageFromURLWithContextRejectsPromptShotOversizedContentLength(t *testing.T) {
+	disableSSRFProtectionForWorkerDownloadFixture(t)
+	InitHttpClient()
+	originalMaxDownloadMB := constant.MaxFileDownloadMB
+	constant.MaxFileDownloadMB = 64
+	t.Cleanup(func() { constant.MaxFileDownloadMB = originalMaxDownloadMB })
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "image/png")
+		writer.Header().Set("Content-Length", "31457281")
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	_, _, err := GetImageFromUrlWithContext(WithPromptShotRequestContext(context.Background()), upstream.URL)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrPromptShotUpstreamResponseTooLarge))
+}
+
+func TestGetImageFromURLWithContextRejectsPromptShotChunkedBodyPastLimit(t *testing.T) {
+	disableSSRFProtectionForWorkerDownloadFixture(t)
+	InitHttpClient()
+	originalMaxDownloadMB := constant.MaxFileDownloadMB
+	constant.MaxFileDownloadMB = 64
+	t.Cleanup(func() { constant.MaxFileDownloadMB = originalMaxDownloadMB })
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "image/png")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte("1234"))
+		writer.(http.Flusher).Flush()
+		_, _ = writer.Write([]byte("5"))
+		writer.(http.Flusher).Flush()
+	}))
+	defer upstream.Close()
+
+	ctx := context.WithValue(WithPromptShotRequestContext(context.Background()), promptShotResponseLimitContextKey{}, int64(4))
+	_, _, err := GetImageFromUrlWithContext(ctx, upstream.URL)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrPromptShotUpstreamResponseTooLarge))
 }
