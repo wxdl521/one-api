@@ -41,7 +41,22 @@ func promptShotPreflightWithRateLimit(maxRequests int, windowSeconds int64, mark
 			return
 		}
 		if common.RedisEnabled && common.RDB != nil {
-			redisRateLimiter(c, maxRequests, windowSeconds, mark)
+			allowed, _, ttlSeconds, err := redisFixedWindowTake(
+				c.Request.Context(),
+				redisIPRateLimitKey(mark, c.ClientIP()),
+				maxRequests,
+				windowSeconds,
+			)
+			if err == nil {
+				if !allowed {
+					writeRateLimited(c, ttlSeconds)
+				}
+			} else {
+				// PromptShot must remain available during a transient Redis outage.
+				// Do not include the error because it can contain a Redis endpoint.
+				common.SysLog("promptshot preflight rate limiter fell back to memory")
+				memoryRateLimiter(c, maxRequests, windowSeconds, mark)
+			}
 		} else {
 			memoryRateLimiter(c, maxRequests, windowSeconds, mark)
 		}

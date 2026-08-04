@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/the-one/common"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -110,6 +112,32 @@ func TestPromptShotPreflightFallsBackToMemoryWhenRedisIsNotInitialized(t *testin
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/promptshot", bytes.NewBufferString(`{}`)))
 
 	require.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestPromptShotPreflightFallsBackToMemoryWhenRedisEvaluationFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	originalRedisEnabled := common.RedisEnabled
+	originalRedisClient := common.RDB
+	failingRedisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", DialTimeout: 10 * time.Millisecond, ReadTimeout: 10 * time.Millisecond, WriteTimeout: 10 * time.Millisecond})
+	common.RedisEnabled = true
+	common.RDB = failingRedisClient
+	t.Cleanup(func() {
+		_ = failingRedisClient.Close()
+		common.RedisEnabled = originalRedisEnabled
+		common.RDB = originalRedisClient
+	})
+	engine := gin.New()
+	engine.POST("/promptshot", promptShotPreflightWithRateLimit(1, 60, "PSPF-REDIS-ERROR-TEST"), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/promptshot", bytes.NewBufferString(`{}`)))
+
+	require.Equal(t, http.StatusNoContent, recorder.Code)
+	limitedRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(limitedRecorder, httptest.NewRequest(http.MethodPost, "/promptshot", bytes.NewBufferString(`{}`)))
+	require.Equal(t, http.StatusTooManyRequests, limitedRecorder.Code)
 }
 
 func TestPromptShotBodyTokenAuthMovesCredentialToAuthorizationAndPreservesBody(t *testing.T) {

@@ -105,6 +105,12 @@ func uploadDifyFile(c *gin.Context, info *relaycommon.RelayInfo, user string, me
 			return nil
 		}
 		defer resp.Body.Close()
+		if service.IsPromptShotCompatibleRequest(c) {
+			if err := service.LimitPromptShotHTTPResponse(resp); err != nil {
+				common.SysLog("dify upload response too large for promptshot request")
+				return nil
+			}
+		}
 
 		// Parse response
 		var result struct {

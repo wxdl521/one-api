@@ -28,7 +28,7 @@ import (
 const (
 	promptShotMaxImageBytes              = 20 << 20
 	promptShotMaxImageEncodedBytes       = (promptShotMaxImageBytes + 2) / 3 * 4
-	promptShotMaxUpstreamResponseBytes   = 30 << 20
+	promptShotMaxUpstreamResponseBytes   = int(service.PromptShotMaxUpstreamResponseBytes)
 	promptShotResponseMIMESniffByteCount = 12
 )
 

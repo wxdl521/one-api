@@ -192,7 +192,7 @@ func oaiFormEdit2AliImageEdit(c *gin.Context, info *relaycommon.RelayInfo, reque
 	return &imageRequest, nil
 }
 
-func updateTask(info *relaycommon.RelayInfo, taskID string) (*AliResponse, error, []byte) {
+func updateTask(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (*AliResponse, error, []byte) {
 	url := fmt.Sprintf("%s/api/v1/tasks/%s", info.ChannelBaseUrl, taskID)
 
 	var aliResponse AliResponse
@@ -211,6 +211,11 @@ func updateTask(info *relaycommon.RelayInfo, taskID string) (*AliResponse, error
 		return &aliResponse, err, nil
 	}
 	defer resp.Body.Close()
+	if service.IsPromptShotCompatibleRequest(c) {
+		if err := service.LimitPromptShotHTTPResponse(resp); err != nil {
+			return &aliResponse, err, nil
+		}
+	}
 
 	responseBody, err := io.ReadAll(resp.Body)
 
@@ -237,7 +242,7 @@ func asyncTaskWait(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (
 	for {
 		logger.LogDebug(c, "asyncTaskWait step %d/%d, wait %d seconds", step, maxStep, waitSeconds)
 		step++
-		rsp, err, body := updateTask(info, taskID)
+		rsp, err, body := updateTask(c, info, taskID)
 		responseBody = body
 		if err != nil {
 			if service.IsPromptShotCompatibleRequest(c) {

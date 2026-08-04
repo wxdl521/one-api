@@ -97,9 +97,13 @@ func zhipu4vImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		case data.B64Image != "":
 			b64 = data.B64Image
 		default:
-			_, downloaded, err := service.GetImageFromUrl(url)
+			_, downloaded, err := service.GetImageFromUrlWithContext(c.Request.Context(), url)
 			if err != nil {
-				logger.LogError(c, "zhipu_image_get_b64_failed: "+err.Error())
+				if service.IsPromptShotCompatibleRequest(c) {
+					logger.LogError(c, "zhipu_image_get_b64_failed for promptshot request")
+				} else {
+					logger.LogError(c, "zhipu_image_get_b64_failed: "+err.Error())
+				}
 				continue
 			}
 			b64 = downloaded

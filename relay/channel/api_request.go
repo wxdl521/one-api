@@ -518,6 +518,11 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if resp == nil {
 		return nil, errors.New("resp is nil")
 	}
+	if service.IsPromptShotCompatibleRequest(c) {
+		if err := service.LimitPromptShotHTTPResponse(resp); err != nil {
+			return nil, types.NewError(err, types.ErrorCodeReadResponseBodyFailed)
+		}
+	}
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
 		c.Set(common2.UpstreamRequestIdKey, upID)
